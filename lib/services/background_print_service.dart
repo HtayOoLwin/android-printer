@@ -27,7 +27,7 @@ Future<void> initializePrinterBackgroundService() async {
       initialNotificationContent: 'Ready for auto printing',
       foregroundServiceNotificationId: _notificationId,
       foregroundServiceTypes: const [
-        AndroidForegroundType.dataSync,
+        AndroidForegroundType.connectedDevice,
       ],
     ),
     iosConfiguration: IosConfiguration(
