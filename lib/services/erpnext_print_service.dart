@@ -81,17 +81,27 @@ class ErpNextPrintService {
         .toList();
   }
 
-  Future<void> markPrinted(PrintJob job) async {
+  Future<void> markPrinted(PrintJob job) {
+    return markPrintedValues(
+      salesOrder: job.salesOrder,
+      printerName: job.printerName,
+      items: job.items.map((item) => item.toAckJson()).toList(),
+    );
+  }
+
+  Future<void> markPrintedValues({
+    required String salesOrder,
+    required String printerName,
+    required List<Map<String, dynamic>> items,
+  }) async {
     await _requestJson(
       method: 'POST',
       path: '/api/method/bcn_update_print_job',
       form: {
-        'sales_order': job.salesOrder,
-        'printer_name': job.printerName,
+        'sales_order': salesOrder,
+        'printer_name': printerName,
         'success': '1',
-        'items': jsonEncode(
-          job.items.map((item) => item.toAckJson()).toList(),
-        ),
+        'items': jsonEncode(items),
       },
     );
   }
