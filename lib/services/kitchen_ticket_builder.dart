@@ -34,8 +34,6 @@ class KitchenTicketBuilder {
         tableNumber,
         styles: const PosStyles(
           bold: true,
-          height: PosTextSize.size2,
-          width: PosTextSize.size2,
         ),
       ),
     );
@@ -53,7 +51,6 @@ class KitchenTicketBuilder {
           '${_formatQty(item.qty)} x ${item.itemName}',
           styles: const PosStyles(
             bold: true,
-            height: PosTextSize.size2,
           ),
         ),
       );
