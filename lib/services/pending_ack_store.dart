@@ -52,6 +52,7 @@ class PendingAckStore {
 
   Future<List<PendingPrintAck>> load() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
     final raw = prefs.getString(_key);
 
     if (raw == null || raw.trim().isEmpty) {
