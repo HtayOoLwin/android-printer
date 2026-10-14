@@ -366,13 +366,13 @@ class _PrinterTestScreenState extends State<PrinterTestScreen> {
                 _editingIndex == null ? 'Save Printer' : 'Update Printer',
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 3),
             OutlinedButton.icon(
               onPressed: _busy ? null : _testCurrentConnection,
               icon: const Icon(Icons.link),
               label: const Text('Test Connection'),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 3),
             OutlinedButton.icon(
               onPressed: _busy ? null : _testCurrentPrint,
               icon: const Icon(Icons.print),
@@ -390,7 +390,7 @@ class _PrinterTestScreenState extends State<PrinterTestScreen> {
               'Saved Printers',
               style: Theme.of(context).textTheme.titleLarge,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 3),
             if (_savedPrinters.isEmpty)
               const Text('No printers saved yet.')
             else
@@ -564,13 +564,13 @@ class _PrinterTestScreenState extends State<PrinterTestScreen> {
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               ),
               Text('  No Onion'),
-              SizedBox(height: 8),
+              SizedBox(height: 3),
               Text(
                 '1 x Chicken Curry',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               ),
               Text('  Extra Chili'),
-              SizedBox(height: 8),
+              SizedBox(height: 3),
               Text(
                 '1 x Beer',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
