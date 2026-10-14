@@ -139,7 +139,7 @@ class KitchenTicketBuilder {
     final maxWidth = paperWidth == 58 ? 360.0 : 540.0;
 
     final paragraphStyle = ui.ParagraphStyle(
-      textAlign: TextAlign.left,
+      textAlign: ui.TextAlign.left,
       maxLines: null,
     );
 
