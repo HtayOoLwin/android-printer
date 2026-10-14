@@ -12,6 +12,7 @@ dependencies:
   esc_pos_utils_plus: ^2.0.4
   print_bluetooth_thermal: ^1.2.5
   shared_preferences: ^2.5.5
+  flutter_secure_storage: ^10.0.0
 
 dev_dependencies:
   flutter_test:
