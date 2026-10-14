@@ -16,7 +16,6 @@ class KitchenTicketBuilder {
   Future<List<int>> build({
     required int paperWidth,
     required String tableNumber,
-    required String waiter,
     required List<KitchenTicketItem> items,
     String orderNote = '',
   }) async {
@@ -30,8 +29,8 @@ class KitchenTicketBuilder {
     // ESC 3 n = set line spacing to n dots.
     bytes.addAll([0x1B, 0x33, 18]);
 
-    // Compact kitchen-ticket layout based on the user's sample print:
-    // no title, only table, waiter, item/qty, kitchen note and order note.
+    // Compact kitchen-ticket layout:
+    // table, item/qty, kitchen note and order note.
     bytes.addAll(generator.hr(ch: '-'));
     bytes.addAll(
       generator.text(
@@ -39,12 +38,6 @@ class KitchenTicketBuilder {
         styles: const PosStyles(
           bold: true,
         ),
-      ),
-    );
-    bytes.addAll(
-      generator.text(
-        'Waiter: $waiter',
-        styles: const PosStyles(bold: true),
       ),
     );
     bytes.addAll(generator.hr(ch: '-'));
