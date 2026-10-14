@@ -22,6 +22,7 @@ class ServerSettingsStore {
 
   Future<ServerSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
 
     return ServerSettings(
       baseUrl: prefs.getString(_baseUrlKey) ?? 'https://ourcity.s.frappe.cloud',
