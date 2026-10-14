@@ -208,7 +208,7 @@ void printerBackgroundOnStart(ServiceInstance service) async {
       // printing the same ticket again.
       await flushPendingAcks(client);
 
-      final printers = await printerSettingsStore.load();
+      final printers = await printerSettingsStore.loadPrinters();
       final jobs = await client.getPendingJobs();
       final waitingAckIds = await pendingAckStore.jobIds();
 
