@@ -4,14 +4,18 @@ import 'package:flutter/material.dart';
 
 import 'models/print_job.dart';
 import 'models/printer_config.dart';
+import 'services/background_print_service.dart';
 import 'services/bluetooth_printer_service.dart';
 import 'services/erpnext_print_service.dart';
 import 'services/kitchen_ticket_builder.dart';
+import 'services/pending_ack_store.dart';
 import 'services/printer_settings_store.dart';
 import 'services/server_settings_store.dart';
 import 'services/wifi_printer_service.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initializePrinterBackgroundService();
   runApp(const BcnPrinterApp());
 }
 
@@ -45,6 +49,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
   final _ticketBuilder = KitchenTicketBuilder();
   final _printerSettingsStore = PrinterSettingsStore();
   final _serverSettingsStore = ServerSettingsStore();
+  final _pendingAckStore = PendingAckStore();
 
   final _nameController = TextEditingController(text: 'Kitchen');
   final _ipController = TextEditingController(text: '192.168.0.90');
@@ -64,7 +69,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
   int? _editingIndex;
 
   ErpNextPrintService? _erpNextService;
-  Timer? _autoPrintTimer;
+  StreamSubscription<Map<String, dynamic>?>? _backgroundStatusSubscription;
 
   bool _busy = false;
   bool _serverLoggedIn = false;
@@ -80,7 +85,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
 
   @override
   void dispose() {
-    _autoPrintTimer?.cancel();
+    _backgroundStatusSubscription?.cancel();
     _nameController.dispose();
     _ipController.dispose();
     _portController.dispose();
@@ -94,6 +99,28 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
   Future<void> _loadInitialSettings() async {
     final printers = await _printerSettingsStore.loadPrinters();
     final server = await _serverSettingsStore.load();
+    final backgroundRunning = await isPrinterBackgroundRunning();
+
+    _backgroundStatusSubscription?.cancel();
+    _backgroundStatusSubscription =
+        printerBackgroundStatusStream().listen((event) {
+      if (!mounted || event == null) return;
+
+      final message = (event['message'] ?? '').toString();
+      final pending = event['pending'];
+
+      setState(() {
+        if (message.isNotEmpty) {
+          _status = message;
+        }
+
+        if (pending is num) {
+          _pendingCount = pending.toInt();
+        }
+
+        _autoPrint = true;
+      });
+    });
 
     if (!mounted) return;
 
@@ -102,6 +129,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
       _serverUrlController.text = server.baseUrl;
       _usernameController.text = server.username;
       _passwordController.text = server.password;
+      _autoPrint = backgroundRunning;
     });
   }
 
@@ -197,8 +225,19 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
 
         await _printJob(job, printer);
 
-        // Mark as printed only after the printer write completes successfully.
-        await service.markPrinted(job);
+        // Persist ACK before calling ERPNext. If the printer succeeds but the
+        // network drops during ACK, background retry will send only the ACK
+        // instead of printing the same ticket again.
+        final ack = PendingPrintAck.fromJob(job);
+        await _pendingAckStore.add(ack);
+
+        await service.markPrintedValues(
+          salesOrder: ack.salesOrder,
+          printerName: ack.printerName,
+          items: ack.items,
+        );
+
+        await _pendingAckStore.remove(job.jobId);
         successCount += 1;
       } catch (error) {
         errors.add(
@@ -280,15 +319,15 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
     );
   }
 
-  void _setAutoPrint(bool enabled) {
-    _autoPrintTimer?.cancel();
-
-    setState(() {
-      _autoPrint = enabled;
-    });
-
+  Future<void> _setAutoPrint(bool enabled) async {
     if (!enabled) {
-      _setStatus('Auto Print stopped.');
+      stopPrinterBackgroundService();
+
+      if (!mounted) return;
+      setState(() {
+        _autoPrint = false;
+      });
+      _setStatus('Background Auto Print stopped.');
       return;
     }
 
@@ -300,19 +339,26 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
       return;
     }
 
-    _setStatus('Auto Print running every 5 seconds.');
+    try {
+      await startPrinterBackgroundService();
 
-    _autoPrintTimer = Timer.periodic(
-      const Duration(seconds: 5),
-      (_) {
-        if (!_busy && mounted) {
-          _runAction(_printPendingJobs);
-        }
-      },
-    );
+      if (!mounted) return;
+      setState(() {
+        _autoPrint = true;
+      });
 
-    if (!_busy) {
-      _runAction(_printPendingJobs);
+      _setStatus(
+        'Background Auto Print started. You can minimize the app.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _autoPrint = false;
+      });
+
+      _setStatus(
+        'Auto Print error: ${error.toString().replaceFirst('Exception: ', '')}',
+      );
     }
   }
 
@@ -678,9 +724,15 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Auto Print'),
-              subtitle: const Text('Check pending jobs every 5 seconds'),
+              subtitle: const Text(
+                'Runs as Android foreground service every 5 seconds',
+              ),
               value: _autoPrint,
-              onChanged: _busy ? null : _setAutoPrint,
+              onChanged: _busy
+                  ? null
+                  : (enabled) {
+                      _setAutoPrint(enabled);
+                    },
             ),
             Text(
               'Pending Jobs: $_pendingCount',
