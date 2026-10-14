@@ -11,6 +11,8 @@ class BluetoothPrinterDevice {
 }
 
 class BluetoothPrinterService {
+  String? _connectedMac;
+
   Future<bool> isBluetoothEnabled() {
     return PrintBluetoothThermal.bluetoothEnabled;
   }
@@ -40,6 +42,8 @@ class BluetoothPrinterService {
     if (!connected) {
       throw Exception('Bluetooth printer connection failed.');
     }
+
+    _connectedMac = macAddress;
   }
 
   Future<void> testConnection(String macAddress) async {
@@ -52,7 +56,13 @@ class BluetoothPrinterService {
   }) async {
     final alreadyConnected = await PrintBluetoothThermal.connectionStatus;
 
-    if (!alreadyConnected) {
+    if (alreadyConnected && _connectedMac != macAddress) {
+      await PrintBluetoothThermal.disconnect;
+      _connectedMac = null;
+    }
+
+    final connectedNow = await PrintBluetoothThermal.connectionStatus;
+    if (!connectedNow || _connectedMac != macAddress) {
       await connect(macAddress);
     }
 
@@ -67,5 +77,6 @@ class BluetoothPrinterService {
     if (connected) {
       await PrintBluetoothThermal.disconnect;
     }
+    _connectedMac = null;
   }
 }
