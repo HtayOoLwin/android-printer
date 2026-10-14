@@ -1,41 +1,39 @@
+import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/printer_config.dart';
+
 class PrinterSettingsStore {
-  static const _connectionKey = 'connection_type';
-  static const _ipKey = 'printer_ip';
-  static const _portKey = 'printer_port';
-  static const _paperWidthKey = 'paper_width';
-  static const _bluetoothNameKey = 'bluetooth_name';
-  static const _bluetoothMacKey = 'bluetooth_mac';
+  static const _printersKey = 'saved_printers_v1';
 
-  Future<Map<String, Object?>> load() async {
+  Future<List<PrinterConfig>> loadPrinters() async {
     final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_printersKey);
 
-    return {
-      'connection_type': prefs.getString(_connectionKey) ?? 'wifi',
-      'printer_ip': prefs.getString(_ipKey) ?? '192.168.1.50',
-      'printer_port': prefs.getInt(_portKey) ?? 9100,
-      'paper_width': prefs.getInt(_paperWidthKey) ?? 80,
-      'bluetooth_name': prefs.getString(_bluetoothNameKey) ?? '',
-      'bluetooth_mac': prefs.getString(_bluetoothMacKey) ?? '',
-    };
+    if (raw == null || raw.trim().isEmpty) {
+      return const [];
+    }
+
+    try {
+      final decoded = jsonDecode(raw) as List<dynamic>;
+      return decoded
+          .map(
+            (item) => PrinterConfig.fromJson(
+              Map<String, dynamic>.from(item as Map),
+            ),
+          )
+          .toList();
+    } catch (_) {
+      return const [];
+    }
   }
 
-  Future<void> save({
-    required String connectionType,
-    required String ip,
-    required int port,
-    required int paperWidth,
-    required String bluetoothName,
-    required String bluetoothMac,
-  }) async {
+  Future<void> savePrinters(List<PrinterConfig> printers) async {
     final prefs = await SharedPreferences.getInstance();
-
-    await prefs.setString(_connectionKey, connectionType);
-    await prefs.setString(_ipKey, ip);
-    await prefs.setInt(_portKey, port);
-    await prefs.setInt(_paperWidthKey, paperWidth);
-    await prefs.setString(_bluetoothNameKey, bluetoothName);
-    await prefs.setString(_bluetoothMacKey, bluetoothMac);
+    final encoded = jsonEncode(
+      printers.map((printer) => printer.toJson()).toList(),
+    );
+    await prefs.setString(_printersKey, encoded);
   }
 }
