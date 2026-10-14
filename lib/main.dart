@@ -543,6 +543,7 @@ class _PrinterTestScreenState extends State<PrinterTestScreen> {
         child: DefaultTextStyle(
           style: const TextStyle(
             fontFamily: 'monospace',
+            fontSize: 13,
             color: Colors.black87,
           ),
           child: Column(
@@ -551,7 +552,7 @@ class _PrinterTestScreenState extends State<PrinterTestScreen> {
               Text('--------------------------------'),
               Text(
                 'Table 07',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               ),
               Text(
                 'Waiter: Htay Oo Lwin',
@@ -560,19 +561,19 @@ class _PrinterTestScreenState extends State<PrinterTestScreen> {
               Text('--------------------------------'),
               Text(
                 '1 x Fried Rice',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               ),
               Text('  No Onion'),
               SizedBox(height: 8),
               Text(
                 '1 x Chicken Curry',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               ),
               Text('  Extra Chili'),
               SizedBox(height: 8),
               Text(
                 '1 x Beer',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               ),
               Text('--------------------------------'),
               Text(
