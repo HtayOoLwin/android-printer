@@ -26,66 +26,44 @@ class KitchenTicketBuilder {
 
     final bytes = <int>[];
 
+    // Compact kitchen-ticket layout based on the user's sample print:
+    // no title, only table, waiter, item/qty, kitchen note and order note.
+    bytes.addAll(generator.hr(ch: '-'));
     bytes.addAll(
       generator.text(
-        'KITCHEN ORDER',
+        tableNumber,
         styles: const PosStyles(
-          align: PosAlign.center,
           bold: true,
           height: PosTextSize.size2,
           width: PosTextSize.size2,
         ),
       ),
     );
-    bytes.addAll(generator.hr());
-    bytes.addAll(generator.text('Table No : $tableNumber'));
-    bytes.addAll(generator.text('Waiter   : $waiter'));
-    bytes.addAll(generator.hr());
-
     bytes.addAll(
-      generator.row([
-        PosColumn(
-          text: 'QTY',
-          width: 2,
-          styles: const PosStyles(bold: true),
-        ),
-        PosColumn(
-          text: 'ITEM',
-          width: 10,
-          styles: const PosStyles(bold: true),
-        ),
-      ]),
+      generator.text(
+        'Waiter: $waiter',
+        styles: const PosStyles(bold: true),
+      ),
     );
-    bytes.addAll(generator.hr());
+    bytes.addAll(generator.hr(ch: '-'));
 
     for (final item in items) {
       bytes.addAll(
-        generator.row([
-          PosColumn(
-            text: _formatQty(item.qty),
-            width: 2,
-            styles: const PosStyles(
-              bold: true,
-              height: PosTextSize.size2,
-            ),
+        generator.text(
+          '${_formatQty(item.qty)} x ${item.itemName}',
+          styles: const PosStyles(
+            bold: true,
+            height: PosTextSize.size2,
           ),
-          PosColumn(
-            text: item.itemName,
-            width: 10,
-            styles: const PosStyles(
-              bold: true,
-              height: PosTextSize.size2,
-            ),
-          ),
-        ]),
+        ),
       );
 
       final note = item.kitchenNote.trim();
       if (note.isNotEmpty) {
         bytes.addAll(
           generator.text(
-            'Note: $note',
-            styles: const PosStyles(align: PosAlign.left),
+            '  $note',
+            styles: const PosStyles(bold: true),
           ),
         );
       }
@@ -95,17 +73,16 @@ class KitchenTicketBuilder {
 
     final cleanOrderNote = orderNote.trim();
     if (cleanOrderNote.isNotEmpty) {
-      bytes.addAll(generator.hr());
+      bytes.addAll(generator.hr(ch: '-'));
       bytes.addAll(
         generator.text(
-          'Order Note:',
+          'Order Note: $cleanOrderNote',
           styles: const PosStyles(bold: true),
         ),
       );
-      bytes.addAll(generator.text(cleanOrderNote));
     }
 
-    bytes.addAll(generator.hr());
+    bytes.addAll(generator.hr(ch: '-'));
     bytes.addAll(generator.feed(2));
     bytes.addAll(generator.cut());
 
