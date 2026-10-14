@@ -136,7 +136,9 @@ class KitchenTicketBuilder {
     required int paperWidth,
     required bool bold,
   }) async {
-    final maxWidth = paperWidth == 58 ? 360.0 : 540.0;
+    // Keep raster width divisible by 8 because esc_pos_utils_plus 2.0.4
+    // throws on non-byte-aligned image widths.
+    final maxWidth = paperWidth == 58 ? 384.0 : 576.0;
 
     final paragraphStyle = ui.ParagraphStyle(
       textAlign: ui.TextAlign.left,
