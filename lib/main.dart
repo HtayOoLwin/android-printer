@@ -40,13 +40,16 @@ class _PrinterTestScreenState extends State<PrinterTestScreen> {
   final _ticketBuilder = KitchenTicketBuilder();
   final _settingsStore = PrinterSettingsStore();
 
-  final _ipController = TextEditingController(text: '192.168.1.50');
+  final _nameController = TextEditingController(text: 'Kitchen Printer');
+  final _ipController = TextEditingController(text: '192.168.0.90');
   final _portController = TextEditingController(text: '9100');
 
   PrinterConnectionType _connectionType = PrinterConnectionType.wifi;
   int _paperWidth = 80;
   List<BluetoothPrinterDevice> _bluetoothDevices = const [];
   BluetoothPrinterDevice? _selectedBluetoothDevice;
+  List<PrinterConfig> _savedPrinters = const [];
+  int? _editingIndex;
 
   bool _busy = false;
   String _status = 'Ready';
@@ -54,51 +57,24 @@ class _PrinterTestScreenState extends State<PrinterTestScreen> {
   @override
   void initState() {
     super.initState();
-    _loadSettings();
+    _loadSavedPrinters();
   }
 
   @override
   void dispose() {
+    _nameController.dispose();
     _ipController.dispose();
     _portController.dispose();
     _bluetoothService.disconnect();
     super.dispose();
   }
 
-  Future<void> _loadSettings() async {
-    final settings = await _settingsStore.load();
+  Future<void> _loadSavedPrinters() async {
+    final printers = await _settingsStore.loadPrinters();
     if (!mounted) return;
-
     setState(() {
-      _connectionType = settings['connection_type'] == 'bluetooth'
-          ? PrinterConnectionType.bluetooth
-          : PrinterConnectionType.wifi;
-      _ipController.text = settings['printer_ip'] as String;
-      _portController.text = (settings['printer_port'] as int).toString();
-      _paperWidth = settings['paper_width'] as int;
-
-      final savedName = settings['bluetooth_name'] as String;
-      final savedMac = settings['bluetooth_mac'] as String;
-      if (savedMac.isNotEmpty) {
-        _selectedBluetoothDevice = BluetoothPrinterDevice(
-          name: savedName,
-          mac: savedMac,
-        );
-      }
+      _savedPrinters = printers;
     });
-  }
-
-  Future<void> _saveSettings() async {
-    final port = int.tryParse(_portController.text.trim()) ?? 9100;
-
-    await _settingsStore.save(
-      connectionType: _connectionType.name,
-      ip: _ipController.text.trim(),
-      port: port,
-      paperWidth: _paperWidth,
-      bluetoothName: _selectedBluetoothDevice?.name ?? '',
-      bluetoothMac: _selectedBluetoothDevice?.mac ?? '',
-    );
   }
 
   Future<void> _loadPairedBluetoothDevices() async {
@@ -109,14 +85,13 @@ class _PrinterTestScreenState extends State<PrinterTestScreen> {
       }
 
       final devices = await _bluetoothService.pairedDevices();
-
       if (!mounted) return;
+
       setState(() {
         _bluetoothDevices = devices;
-
         if (_selectedBluetoothDevice != null) {
           final matches = devices.where(
-            (device) => device.mac == _selectedBluetoothDevice!.mac,
+            (d) => d.mac == _selectedBluetoothDevice!.mac,
           );
           if (matches.isNotEmpty) {
             _selectedBluetoothDevice = matches.first;
@@ -126,146 +101,225 @@ class _PrinterTestScreenState extends State<PrinterTestScreen> {
 
       _setStatus(
         devices.isEmpty
-            ? 'No paired Bluetooth printers found. Pair the printer in Android Settings first.'
+            ? 'No paired Bluetooth printers found.'
             : 'Found ${devices.length} paired Bluetooth device(s).',
       );
     });
   }
 
-  Future<void> _testConnection() async {
+  PrinterConfig _currentConfig() {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      throw Exception('Enter printer name.');
+    }
+
+    final port = int.tryParse(_portController.text.trim()) ?? 9100;
+
+    if (_connectionType == PrinterConnectionType.wifi) {
+      final ip = _ipController.text.trim();
+      if (ip.isEmpty) {
+        throw Exception('Enter printer IP.');
+      }
+
+      return PrinterConfig(
+        name: name,
+        connectionType: _connectionType,
+        paperWidth: _paperWidth,
+        ip: ip,
+        port: port,
+      );
+    }
+
+    final device = _selectedBluetoothDevice;
+    if (device == null) {
+      throw Exception('Select a paired Bluetooth printer.');
+    }
+
+    return PrinterConfig(
+      name: name,
+      connectionType: _connectionType,
+      paperWidth: _paperWidth,
+      bluetoothName: device.name,
+      bluetoothMac: device.mac,
+    );
+  }
+
+  Future<void> _savePrinter() async {
     await _runAction(() async {
-      await _saveSettings();
+      final config = _currentConfig();
+      final updated = List<PrinterConfig>.from(_savedPrinters);
 
-      if (_connectionType == PrinterConnectionType.wifi) {
-        final ip = _ipController.text.trim();
-        final port = int.tryParse(_portController.text.trim());
-
-        if (ip.isEmpty || port == null) {
-          throw Exception('Enter a valid printer IP and port.');
-        }
-
-        _setStatus('Connecting to $ip:$port ...');
-        await _wifiService.testConnection(ip: ip, port: port);
-        _setStatus('Wi-Fi printer connection successful.');
-        return;
+      if (_editingIndex == null) {
+        updated.add(config);
+      } else {
+        updated[_editingIndex!] = config;
       }
 
-      final device = _selectedBluetoothDevice;
-      if (device == null) {
-        throw Exception('Select a paired Bluetooth printer first.');
-      }
+      await _settingsStore.savePrinters(updated);
+      if (!mounted) return;
 
-      _setStatus('Connecting to ${device.name} ...');
-      await _bluetoothService.testConnection(device.mac);
-      _setStatus('Bluetooth printer connection successful.');
+      setState(() {
+        _savedPrinters = updated;
+        _editingIndex = null;
+      });
+      _setStatus('Printer saved.');
     });
   }
 
-  Future<void> _testPrint() async {
+  void _editPrinter(int index) {
+    final p = _savedPrinters[index];
+    setState(() {
+      _editingIndex = index;
+      _nameController.text = p.name;
+      _connectionType = p.connectionType;
+      _paperWidth = p.paperWidth;
+      _ipController.text = p.ip;
+      _portController.text = p.port.toString();
+      _selectedBluetoothDevice = p.bluetoothMac.isEmpty
+          ? null
+          : BluetoothPrinterDevice(
+              name: p.bluetoothName,
+              mac: p.bluetoothMac,
+            );
+    });
+  }
+
+  Future<void> _deletePrinter(int index) async {
+    final updated = List<PrinterConfig>.from(_savedPrinters)..removeAt(index);
+    await _settingsStore.savePrinters(updated);
+    if (!mounted) return;
+    setState(() {
+      _savedPrinters = updated;
+      if (_editingIndex == index) {
+        _editingIndex = null;
+      }
+    });
+    _setStatus('Printer deleted.');
+  }
+
+  Future<void> _testCurrentConnection() async {
     await _runAction(() async {
-      await _saveSettings();
+      final config = _currentConfig();
+      await _testConnectionFor(config);
+    });
+  }
 
-      final bytes = await _ticketBuilder.build(
-        paperWidth: _paperWidth,
-        tableNumber: 'Table 05',
-        waiter: 'Htay Oo Lwin',
-        items: const [
-          KitchenTicketItem(
-            itemName: 'Fried Rice',
-            qty: 2,
-            kitchenNote: 'No Onion',
-          ),
-          KitchenTicketItem(
-            itemName: 'Chicken Curry',
-            qty: 1,
-            kitchenNote: 'Extra Chili',
-          ),
-          KitchenTicketItem(
-            itemName: 'Beer',
-            qty: 3,
-          ),
-        ],
-        orderNote: 'Birthday Table',
-      );
+  Future<void> _testCurrentPrint() async {
+    await _runAction(() async {
+      final config = _currentConfig();
+      await _printTestTicket(config);
+    });
+  }
 
-      if (_connectionType == PrinterConnectionType.wifi) {
-        final ip = _ipController.text.trim();
-        final port = int.tryParse(_portController.text.trim());
+  Future<void> _testConnectionFor(PrinterConfig config) async {
+    if (config.connectionType == PrinterConnectionType.wifi) {
+      _setStatus('Connecting to ${config.ip}:${config.port} ...');
+      await _wifiService.testConnection(ip: config.ip, port: config.port);
+      _setStatus('${config.name}: Wi-Fi connection successful.');
+      return;
+    }
 
-        if (ip.isEmpty || port == null) {
-          throw Exception('Enter a valid printer IP and port.');
-        }
+    if (config.bluetoothMac.isEmpty) {
+      throw Exception('Bluetooth MAC address is missing.');
+    }
 
-        _setStatus('Printing by Wi-Fi to $ip:$port ...');
-        await _wifiService.printBytes(
-          ip: ip,
-          port: port,
-          bytes: bytes,
-        );
-        _setStatus('Wi-Fi test ticket sent successfully.');
-        return;
-      }
+    _setStatus('Connecting to ${config.bluetoothName} ...');
+    await _bluetoothService.testConnection(config.bluetoothMac);
+    _setStatus('${config.name}: Bluetooth connection successful.');
+  }
 
-      final device = _selectedBluetoothDevice;
-      if (device == null) {
-        throw Exception('Select a paired Bluetooth printer first.');
-      }
+  Future<void> _printTestTicket(PrinterConfig config) async {
+    final bytes = await _ticketBuilder.build(
+      paperWidth: config.paperWidth,
+      tableNumber: 'Table 07',
+      waiter: 'Htay Oo Lwin',
+      items: const [
+        KitchenTicketItem(
+          itemName: 'Fried Rice',
+          qty: 1,
+          kitchenNote: 'No Onion',
+        ),
+        KitchenTicketItem(
+          itemName: 'Chicken Curry',
+          qty: 1,
+          kitchenNote: 'Extra Chili',
+        ),
+        KitchenTicketItem(
+          itemName: 'Beer',
+          qty: 1,
+        ),
+      ],
+      orderNote: 'Birthday Table',
+    );
 
-      _setStatus('Printing by Bluetooth to ${device.name} ...');
-      await _bluetoothService.printBytes(
-        macAddress: device.mac,
+    if (config.connectionType == PrinterConnectionType.wifi) {
+      _setStatus('Printing to ${config.name} ...');
+      await _wifiService.printBytes(
+        ip: config.ip,
+        port: config.port,
         bytes: bytes,
       );
-      _setStatus('Bluetooth test ticket sent successfully.');
-    });
+      _setStatus('${config.name}: test ticket sent.');
+      return;
+    }
+
+    if (config.bluetoothMac.isEmpty) {
+      throw Exception('Bluetooth MAC address is missing.');
+    }
+
+    _setStatus('Printing to ${config.name} ...');
+    await _bluetoothService.printBytes(
+      macAddress: config.bluetoothMac,
+      bytes: bytes,
+    );
+    _setStatus('${config.name}: test ticket sent.');
   }
 
   Future<void> _runAction(Future<void> Function() action) async {
     if (_busy) return;
-
-    setState(() {
-      _busy = true;
-    });
+    setState(() => _busy = true);
 
     try {
       await action();
     } catch (error) {
-      _setStatus('Error: ${_cleanError(error)}');
+      _setStatus(
+        'Error: ${error.toString().replaceFirst('Exception: ', '')}',
+      );
     } finally {
       if (mounted) {
-        setState(() {
-          _busy = false;
-        });
+        setState(() => _busy = false);
       }
     }
   }
 
-  String _cleanError(Object error) {
-    return error.toString().replaceFirst('Exception: ', '');
-  }
-
   void _setStatus(String value) {
     if (!mounted) return;
-    setState(() {
-      _status = value;
-    });
+    setState(() => _status = value);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('BCN Printer Test'),
-      ),
+      appBar: AppBar(title: const Text('BCN Printer Test')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
             Text(
-              'Connection Type',
-              style: Theme.of(context).textTheme.titleMedium,
+              _editingIndex == null ? 'Add Printer' : 'Edit Printer',
+              style: Theme.of(context).textTheme.titleLarge,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _nameController,
+              enabled: !_busy,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Printer Name',
+                hintText: 'Kitchen Printer',
+              ),
+            ),
+            const SizedBox(height: 16),
             SegmentedButton<PrinterConnectionType>(
               segments: const [
                 ButtonSegment(
@@ -283,22 +337,15 @@ class _PrinterTestScreenState extends State<PrinterTestScreen> {
               onSelectionChanged: _busy
                   ? null
                   : (selection) {
-                      setState(() {
-                        _connectionType = selection.first;
-                      });
+                      setState(() => _connectionType = selection.first);
                     },
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             if (_connectionType == PrinterConnectionType.wifi)
               _buildWifiSettings()
             else
               _buildBluetoothSettings(),
-            const SizedBox(height: 20),
-            Text(
-              'Paper Width',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 16),
             SegmentedButton<int>(
               segments: const [
                 ButtonSegment(value: 58, label: Text('58mm')),
@@ -308,55 +355,50 @@ class _PrinterTestScreenState extends State<PrinterTestScreen> {
               onSelectionChanged: _busy
                   ? null
                   : (selection) {
-                      setState(() {
-                        _paperWidth = selection.first;
-                      });
+                      setState(() => _paperWidth = selection.first);
                     },
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             FilledButton.icon(
-              onPressed: _busy ? null : _testConnection,
+              onPressed: _busy ? null : _savePrinter,
+              icon: const Icon(Icons.save),
+              label: Text(
+                _editingIndex == null ? 'Save Printer' : 'Update Printer',
+              ),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _busy ? null : _testCurrentConnection,
               icon: const Icon(Icons.link),
               label: const Text('Test Connection'),
             ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: _busy ? null : _testPrint,
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _busy ? null : _testCurrentPrint,
               icon: const Icon(Icons.print),
               label: const Text('Test Print'),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             Card(
               child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (_busy)
-                      const Padding(
-                        padding: EdgeInsets.only(right: 12, top: 2),
-                        child: SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      )
-                    else
-                      const Padding(
-                        padding: EdgeInsets.only(right: 12),
-                        child: Icon(Icons.info_outline),
-                      ),
-                    Expanded(
-                      child: Text(
-                        _status,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ),
-                  ],
-                ),
+                padding: const EdgeInsets.all(12),
+                child: Text(_status),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
+            Text(
+              'Saved Printers',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            if (_savedPrinters.isEmpty)
+              const Text('No printers saved yet.')
+            else
+              ...List.generate(
+                _savedPrinters.length,
+                (index) => _buildPrinterCard(index),
+              ),
+            const SizedBox(height: 24),
             _buildTicketPreview(),
           ],
         ),
@@ -365,33 +407,31 @@ class _PrinterTestScreenState extends State<PrinterTestScreen> {
   }
 
   Widget _buildWifiSettings() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        Text(
-          'Wi-Fi Printer',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _ipController,
-          enabled: !_busy,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            border: OutlineInputBorder(),
-            labelText: 'Printer IP',
-            hintText: '192.168.1.50',
+        Expanded(
+          flex: 3,
+          child: TextField(
+            controller: _ipController,
+            enabled: !_busy,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              labelText: 'Printer IP',
+            ),
           ),
         ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _portController,
-          enabled: !_busy,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            border: OutlineInputBorder(),
-            labelText: 'Port',
-            hintText: '9100',
+        const SizedBox(width: 8),
+        Expanded(
+          flex: 2,
+          child: TextField(
+            controller: _portController,
+            enabled: !_busy,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              labelText: 'Port',
+            ),
           ),
         ),
       ],
@@ -399,61 +439,100 @@ class _PrinterTestScreenState extends State<PrinterTestScreen> {
   }
 
   Widget _buildBluetoothSettings() {
+    final selectedMac = _selectedBluetoothDevice?.mac;
+    final knownMacs = _bluetoothDevices.map((d) => d.mac).toSet();
+    final validSelectedMac =
+        selectedMac != null && knownMacs.contains(selectedMac)
+            ? selectedMac
+            : null;
+
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
             Expanded(
-              child: Text(
-                'Bluetooth Printer',
-                style: Theme.of(context).textTheme.titleMedium,
+              child: DropdownButtonFormField<String>(
+                value: validSelectedMac,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'Paired Printer',
+                ),
+                items: _bluetoothDevices
+                    .map(
+                      (d) => DropdownMenuItem(
+                        value: d.mac,
+                        child: Text(
+                          d.name.isEmpty ? d.mac : '${d.name} (${d.mac})',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: _busy
+                    ? null
+                    : (mac) {
+                        if (mac == null) return;
+                        setState(() {
+                          _selectedBluetoothDevice =
+                              _bluetoothDevices.firstWhere(
+                            (d) => d.mac == mac,
+                          );
+                        });
+                      },
               ),
             ),
-            TextButton.icon(
+            const SizedBox(width: 8),
+            IconButton.filledTonal(
               onPressed: _busy ? null : _loadPairedBluetoothDevices,
               icon: const Icon(Icons.refresh),
-              label: const Text('Refresh'),
+              tooltip: 'Refresh paired devices',
             ),
           ],
         ),
-        const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          initialValue: _selectedBluetoothDevice?.mac,
-          decoration: const InputDecoration(
-            border: OutlineInputBorder(),
-            labelText: 'Paired Printer',
+        const SizedBox(height: 6),
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'Pair the printer in Android Bluetooth settings first, then refresh.',
           ),
-          items: _bluetoothDevices
-              .map(
-                (device) => DropdownMenuItem(
-                  value: device.mac,
-                  child: Text(
-                    device.name.isEmpty
-                        ? device.mac
-                        : '${device.name} (${device.mac})',
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              )
-              .toList(),
-          onChanged: _busy
-              ? null
-              : (mac) {
-                  if (mac == null) return;
-                  setState(() {
-                    _selectedBluetoothDevice = _bluetoothDevices.firstWhere(
-                      (device) => device.mac == mac,
-                    );
-                  });
-                },
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Pair the thermal printer in Android Bluetooth settings first, then tap Refresh.',
-          style: Theme.of(context).textTheme.bodySmall,
         ),
       ],
+    );
+  }
+
+  Widget _buildPrinterCard(int index) {
+    final printer = _savedPrinters[index];
+    final detail = printer.connectionType == PrinterConnectionType.wifi
+        ? '${printer.ip}:${printer.port}'
+        : '${printer.bluetoothName} • ${printer.bluetoothMac}';
+
+    return Card(
+      child: ListTile(
+        leading: Icon(
+          printer.connectionType == PrinterConnectionType.wifi
+              ? Icons.wifi
+              : Icons.bluetooth,
+        ),
+        title: Text(printer.name),
+        subtitle: Text('$detail • ${printer.paperWidth}mm'),
+        isThreeLine: false,
+        trailing: PopupMenuButton<String>(
+          onSelected: (value) {
+            if (value == 'edit') {
+              _editPrinter(index);
+            } else if (value == 'test') {
+              _runAction(() => _printTestTicket(printer));
+            } else if (value == 'delete') {
+              _deletePrinter(index);
+            }
+          },
+          itemBuilder: (context) => const [
+            PopupMenuItem(value: 'test', child: Text('Test Print')),
+            PopupMenuItem(value: 'edit', child: Text('Edit')),
+            PopupMenuItem(value: 'delete', child: Text('Delete')),
+          ],
+        ),
+      ),
     );
   }
 
@@ -469,30 +548,38 @@ class _PrinterTestScreenState extends State<PrinterTestScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: const [
+              Text('--------------------------------'),
               Text(
-                'KITCHEN ORDER',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                'Table 07',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
               ),
-              Divider(),
-              Text('Table No : Table 05'),
-              Text('Waiter   : Htay Oo Lwin'),
-              Divider(),
-              Text('QTY   ITEM', style: TextStyle(fontWeight: FontWeight.bold)),
-              Divider(),
-              Text('2     Fried Rice'),
-              Text('      Note: No Onion'),
-              SizedBox(height: 8),
-              Text('1     Chicken Curry'),
-              Text('      Note: Extra Chili'),
-              SizedBox(height: 8),
-              Text('3     Beer'),
-              Divider(),
               Text(
-                'Order Note:',
+                'Waiter: Htay Oo Lwin',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
-              Text('Birthday Table'),
+              Text('--------------------------------'),
+              Text(
+                '1 x Fried Rice',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+              Text('  No Onion'),
+              SizedBox(height: 8),
+              Text(
+                '1 x Chicken Curry',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+              Text('  Extra Chili'),
+              SizedBox(height: 8),
+              Text(
+                '1 x Beer',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+              Text('--------------------------------'),
+              Text(
+                'Order Note: Birthday Table',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Text('--------------------------------'),
             ],
           ),
         ),
