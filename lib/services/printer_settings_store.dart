@@ -9,6 +9,7 @@ class PrinterSettingsStore {
 
   Future<List<PrinterConfig>> loadPrinters() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
     final raw = prefs.getString(_printersKey);
 
     if (raw == null || raw.trim().isEmpty) {
