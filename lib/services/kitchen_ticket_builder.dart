@@ -26,6 +26,10 @@ class KitchenTicketBuilder {
 
     final bytes = <int>[];
 
+    // Slightly tighter ESC/POS line spacing.
+    // ESC 3 n = set line spacing to n dots.
+    bytes.addAll([0x1B, 0x33, 18]);
+
     // Compact kitchen-ticket layout based on the user's sample print:
     // no title, only table, waiter, item/qty, kitchen note and order note.
     bytes.addAll(generator.hr(ch: '-'));
@@ -65,7 +69,7 @@ class KitchenTicketBuilder {
         );
       }
 
-      bytes.addAll(generator.feed(1));
+
     }
 
     final cleanOrderNote = orderNote.trim();
@@ -80,7 +84,9 @@ class KitchenTicketBuilder {
     }
 
     bytes.addAll(generator.hr(ch: '-'));
-    bytes.addAll(generator.feed(2));
+    bytes.addAll(generator.feed(1));
+    // ESC 2 = restore printer default line spacing before cut.
+    bytes.addAll([0x1B, 0x32]);
     bytes.addAll(generator.cut());
 
     return bytes;
