@@ -762,66 +762,253 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
     });
   }
 
-  Widget _buildDashboard() {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('Print Dashboard',
-                    style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 12),
-                Text('Pending Jobs: $_pendingCount',
-                    style: Theme.of(context).textTheme.headlineSmall),
-                const SizedBox(height: 12),
-                Row(children: [
-                  Expanded(child: OutlinedButton.icon(
-                    onPressed: _busy ? null :
-                        () => _runAction(_refreshPendingCount),
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Check Jobs'),
-                  )),
-                  const SizedBox(width: 8),
-                  Expanded(child: FilledButton.icon(
-                    onPressed: _busy ? null :
-                        () => _runAction(_printPendingJobs),
-                    icon: const Icon(Icons.print),
-                    label: const Text('Print Pending'),
-                  )),
-                ]),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Auto Print'),
-                  subtitle: const Text('Background check every 5 seconds'),
-                  value: _autoPrint,
-                  onChanged: _busy ? null : _setAutoPrint,
+
+  Color _printerColor(String status) {
+    if (status == 'Connected') return const Color(0xFF15966C);
+    if (status == 'Offline' || status == 'Bluetooth Off') return Colors.red;
+    if (status.contains('Bluetooth')) return Colors.orange.shade800;
+    return const Color(0xFF64748B);
+  }
+
+  void _showPrinterDetails(String name, PrinterConfig? printer) {
+    final index = _savedPrinters.indexWhere((p) => p.name == name);
+    final status = printer == null
+        ? 'Not Configured' : (_printerStates[name] ?? 'Checking');
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheet) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          child: Column(mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(name, style: Theme.of(context).textTheme.headlineSmall),
+              const SizedBox(height: 8),
+              Text(status, style: TextStyle(color: _printerColor(status),
+                fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text(printer == null ? 'No printer configured'
+                : printer.connectionType == PrinterConnectionType.wifi
+                  ? 'Wi-Fi · ${printer.ip}:${printer.port} · ${printer.paperWidth}mm'
+                  : 'Bluetooth · ${printer.bluetoothName} · ${printer.paperWidth}mm'),
+              const SizedBox(height: 18),
+              if (printer != null) FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(sheet);
+                  _runAction(() => _printTestTicket(printer));
+                },
+                icon: const Icon(Icons.print_outlined),
+                label: const Text('Test Print'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.pop(sheet);
+                  if (index >= 0) _editPrinter(index);
+                  setState(() => _pageIndex = 1);
+                },
+                icon: const Icon(Icons.tune),
+                label: Text(printer == null ? 'Configure Printer' : 'Edit Printer'),
+              ),
+              if (printer != null) ...[
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(sheet);
+                    _runAction(() => _testConnectionFor(printer));
+                  },
+                  icon: const Icon(Icons.wifi_tethering),
+                  label: const Text('Test Connection'),
+                ),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  style: TextButton.styleFrom(foregroundColor: Colors.red),
+                  onPressed: () async {
+                    Navigator.pop(sheet);
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (dialog) => AlertDialog(
+                        title: Text('Delete $name printer?'),
+                        content: const Text('Remove local configuration and clear its ERPNext backup? The Kitchen Counter record is not deleted.'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(dialog, false),
+                            child: const Text('Cancel')),
+                          FilledButton(onPressed: () => Navigator.pop(dialog, true),
+                            child: const Text('Delete')),
+                        ],
+                      ),
+                    );
+                    if (ok == true && mounted) await _deletePrinter(index);
+                  },
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('Delete Printer'),
                 ),
               ],
-            ),
+            ],
           ),
         ),
-        const SizedBox(height: 12),
-        Row(children: [
-          Expanded(child: Text('Saved Printers', style: Theme.of(context).textTheme.titleLarge)),
-          IconButton(onPressed: _checkingPrinterStatus ? null : _checkPrinterStatuses,
-            tooltip: 'Check printer connections', icon: const Icon(Icons.refresh)),
-        ]),
-        if (_savedPrinters.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(12),
-            child: Text('No printers saved. Add one in Printer Settings.'),
-          )
-        else
-          ...List.generate(_savedPrinters.length, _buildPrinterCard),
-        const SizedBox(height: 12),
-        Card(child: Padding(
-          padding: const EdgeInsets.all(12), child: Text(_status),
-        )),
-      ],
+      ),
+    );
+  }
+
+  Widget _dashboardPrinterTile(String name, PrinterConfig? printer) {
+    final status = printer == null
+        ? 'Not Configured' : (_printerStates[name] ?? 'Checking');
+    final color = _printerColor(status);
+    final details = printer == null ? 'No printer configured'
+        : printer.connectionType == PrinterConnectionType.wifi
+          ? '${printer.ip}:${printer.port} · ${printer.paperWidth}mm · Wi-Fi'
+          : '${printer.bluetoothName} · ${printer.paperWidth}mm · Bluetooth';
+    return Card(
+      color: Colors.white, elevation: 0,
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        onTap: () => _showPrinterDetails(name, printer),
+        leading: CircleAvatar(
+          backgroundColor: color.withValues(alpha: 0.12),
+          child: Icon(printer?.connectionType == PrinterConnectionType.bluetooth
+              ? Icons.bluetooth : Icons.print_outlined, color: color),
+        ),
+        title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Text(details, maxLines: 1, overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 4),
+            Text(status, style: TextStyle(color: color,
+                fontSize: 12, fontWeight: FontWeight.w700)),
+          ],
+        ),
+        trailing: const Icon(Icons.chevron_right),
+      ),
+    );
+  }
+
+  Widget _buildDashboard() {
+    final names = <String>{
+      ..._kitchenCounters.map((c) => c.printerName).where((n) => n.isNotEmpty),
+      ..._savedPrinters.map((p) => p.name),
+    }.toList();
+    final printers = {for (final p in _savedPrinters) p.name: p};
+    final connected = _savedPrinters.where(
+      (p) => _printerStates[p.name] == 'Connected').length;
+    final offline = _savedPrinters.where((p) =>
+      _printerStates[p.name] == 'Offline' ||
+      _printerStates[p.name] == 'Bluetooth Off').length;
+    Widget stat(String label, int number, Color color) => Expanded(
+      child: Column(children: [
+        Text('$number', style: TextStyle(fontSize: 25,
+          fontWeight: FontWeight.bold, color: color)),
+        Text(label, textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 12)),
+      ]),
+    );
+
+    return ColoredBox(
+      color: const Color(0xFFF5F7FA),
+      child: RefreshIndicator(
+        onRefresh: () async {
+          await _refreshKitchenCounters();
+          await _checkPrinterStatuses();
+        },
+        child: ListView(
+          padding: const EdgeInsets.all(14),
+          children: [
+            Text('BCN Printer Worker',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: const Color(0xFF0D3970), fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            Card(
+              color: Colors.white, elevation: 0,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
+                child: Row(children: [
+                  stat('Connected', connected, const Color(0xFF15966C)),
+                  const SizedBox(height: 44, child: VerticalDivider()),
+                  stat('Offline', offline, Colors.red),
+                  const SizedBox(height: 44, child: VerticalDivider()),
+                  stat('Other / Setup', names.length - connected - offline,
+                    const Color(0xFF64748B)),
+                ]),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(child: Text('Printers',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold))),
+              TextButton.icon(
+                onPressed: _checkingPrinterStatus ? null : () async {
+                  await _refreshKitchenCounters();
+                  await _checkPrinterStatuses();
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text('Refresh'),
+              ),
+            ]),
+            if (names.isEmpty)
+              Card(child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(children: [
+                  const Icon(Icons.print_disabled_outlined, size: 40),
+                  const Text('No Printers Found'),
+                  TextButton(
+                    onPressed: () => setState(() => _pageIndex = 1),
+                    child: const Text('Go to Settings'),
+                  ),
+                ]),
+              ))
+            else
+              ...names.map((name) => _dashboardPrinterTile(name, printers[name])),
+            const SizedBox(height: 12),
+            Card(
+              color: Colors.white, elevation: 0,
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(children: [
+                      const Icon(Icons.receipt_long_outlined),
+                      const SizedBox(width: 8),
+                      const Expanded(child: Text('Print Jobs',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                      Text('Pending: $_pendingCount'),
+                    ]),
+                    const SizedBox(height: 10),
+                    Row(children: [
+                      Expanded(child: OutlinedButton.icon(
+                        onPressed: _busy ? null :
+                          () => _runAction(_refreshPendingCount),
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Check Jobs'),
+                      )),
+                      const SizedBox(width: 8),
+                      Expanded(child: FilledButton.icon(
+                        onPressed: _busy ? null :
+                          () => _runAction(_printPendingJobs),
+                        icon: const Icon(Icons.print),
+                        label: const Text('Print Pending'),
+                      )),
+                    ]),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Auto Print'),
+                      subtitle: const Text('Background check every 5 seconds'),
+                      value: _autoPrint,
+                      onChanged: _busy ? null : _setAutoPrint,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(_status, style: const TextStyle(fontSize: 12)),
+          ],
+        ),
+      ),
     );
   }
 
