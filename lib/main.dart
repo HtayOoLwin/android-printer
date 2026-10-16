@@ -72,6 +72,8 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
   StreamSubscription<Map<String, dynamic>?>? _backgroundStatusSubscription;
 
   bool _busy = false;
+  bool _initializing = true;
+  int _pageIndex = 0;
   bool _serverLoggedIn = false;
   bool _rememberMe = true;
   bool _autoPrint = false;
@@ -138,6 +140,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
         server.password.isNotEmpty && server.baseUrl.isNotEmpty) {
       await _loginServer(silent: true);
     }
+    if (mounted) setState(() => _initializing = false);
   }
 
   Future<void> _loginServer({bool silent = false}) async {
@@ -170,6 +173,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
       if (!mounted) return;
       setState(() {
         _serverLoggedIn = true;
+        _pageIndex = 0;
       });
 
       _setStatus(silent ? 'Auto login successful.' : 'ERPNext login successful.');
@@ -616,41 +620,163 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
     });
   }
 
+  Future<void> _logout() async {
+    if (_autoPrint) {
+      stopPrinterBackgroundService();
+    }
+    await _serverSettingsStore.save(ServerSettings(
+      baseUrl: _serverUrlController.text.trim(),
+      username: '',
+      password: '',
+      rememberMe: false,
+    ));
+    if (!mounted) return;
+    setState(() {
+      _erpNextService = null;
+      _serverLoggedIn = false;
+      _autoPrint = false;
+      _rememberMe = false;
+      _pageIndex = 0;
+      _pendingCount = 0;
+      _usernameController.clear();
+      _passwordController.clear();
+      _status = 'Logged out.';
+    });
+  }
+
+  Widget _buildDashboard() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Print Dashboard',
+                    style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 12),
+                Text('Pending Jobs: $_pendingCount',
+                    style: Theme.of(context).textTheme.headlineSmall),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(child: OutlinedButton.icon(
+                    onPressed: _busy ? null :
+                        () => _runAction(_refreshPendingCount),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Check Jobs'),
+                  )),
+                  const SizedBox(width: 8),
+                  Expanded(child: FilledButton.icon(
+                    onPressed: _busy ? null :
+                        () => _runAction(_printPendingJobs),
+                    icon: const Icon(Icons.print),
+                    label: const Text('Print Pending'),
+                  )),
+                ]),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Auto Print'),
+                  subtitle: const Text('Background check every 5 seconds'),
+                  value: _autoPrint,
+                  onChanged: _busy ? null : _setAutoPrint,
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text('Saved Printers', style: Theme.of(context).textTheme.titleLarge),
+        if (_savedPrinters.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(12),
+            child: Text('No printers saved. Add one in Printer Settings.'),
+          )
+        else
+          ...List.generate(_savedPrinters.length, _buildPrinterCard),
+        const SizedBox(height: 12),
+        Card(child: Padding(
+          padding: const EdgeInsets.all(12), child: Text(_status),
+        )),
+      ],
+    );
+  }
+
+  Widget _buildPrinterSettingsPage() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _buildPrinterEditor(),
+        const SizedBox(height: 20),
+        Text('Saved Printers', style: Theme.of(context).textTheme.titleLarge),
+        if (_savedPrinters.isEmpty)
+          const Text('No printers saved yet.')
+        else
+          ...List.generate(_savedPrinters.length, _buildPrinterCard),
+        Card(child: Padding(
+          padding: const EdgeInsets.all(12), child: Text(_status),
+        )),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('BCN Printer Worker'),
-      ),
-      body: SafeArea(
-        child: ListView(
+    if (_initializing) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (!_serverLoggedIn) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('ERPNext Login')),
+        body: SafeArea(child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            const Icon(Icons.print, size: 64),
+            const SizedBox(height: 12),
             _buildServerCard(),
-            const SizedBox(height: 20),
-            _buildPrinterEditor(),
-            const SizedBox(height: 20),
-            Text(
-              'Saved Printers',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 6),
-            if (_savedPrinters.isEmpty)
-              const Text('No printers saved yet.')
-            else
-              ...List.generate(
-                _savedPrinters.length,
-                _buildPrinterCard,
-              ),
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Text(_status),
-              ),
-            ),
+            Card(child: Padding(
+              padding: const EdgeInsets.all(12), child: Text(_status),
+            )),
           ],
-        ),
+        )),
+      );
+    }
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_pageIndex == 0 ? 'Dashboard' : 'Printer Settings'),
+        actions: [
+          IconButton(
+            onPressed: _busy ? null : _logout,
+            tooltip: 'Logout',
+            icon: const Icon(Icons.logout),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: _pageIndex == 0
+            ? _buildDashboard()
+            : _buildPrinterSettingsPage(),
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _pageIndex,
+        onDestinationSelected: (index) {
+          setState(() => _pageIndex = index);
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard),
+            label: 'Dashboard',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
+            label: 'Printer Settings',
+          ),
+        ],
       ),
     );
   }
@@ -723,48 +849,6 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
               label: Text(
                 _serverLoggedIn ? 'Login Again' : 'Login',
               ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: !_serverLoggedIn || _busy
-                        ? null
-                        : () => _runAction(_refreshPendingCount),
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Check Jobs'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: !_serverLoggedIn || _busy
-                        ? null
-                        : () => _runAction(_printPendingJobs),
-                    icon: const Icon(Icons.print),
-                    label: const Text('Print Pending'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Auto Print'),
-              subtitle: const Text(
-                'Runs as Android foreground service every 5 seconds',
-              ),
-              value: _autoPrint,
-              onChanged: _busy
-                  ? null
-                  : (enabled) {
-                      _setAutoPrint(enabled);
-                    },
-            ),
-            Text(
-              'Pending Jobs: $_pendingCount',
-              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ],
         ),
