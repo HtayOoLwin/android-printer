@@ -54,7 +54,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
   final _pendingAckStore = PendingAckStore();
 
   final _nameController = TextEditingController();
-  final _ipController = TextEditingController(text: '192.168.0.90');
+  final _ipController = TextEditingController();
   final _portController = TextEditingController(text: '9100');
 
   final _serverUrlController = TextEditingController(
