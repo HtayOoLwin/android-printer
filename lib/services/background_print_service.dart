@@ -4,8 +4,10 @@ import 'dart:ui';
 import 'package:flutter_background_service/flutter_background_service.dart';
 
 import '../models/print_job.dart';
+import '../models/cashier_bill_job.dart';
 import '../models/printer_config.dart';
 import 'bluetooth_printer_service.dart';
+import 'cashier_bill_ticket_builder.dart';
 import 'erpnext_print_service.dart';
 import 'kitchen_ticket_builder.dart';
 import 'kitchen_counter_sync_store.dart';
@@ -70,6 +72,7 @@ void printerBackgroundOnStart(ServiceInstance service) async {
   final wifiService = WifiPrinterService();
   final bluetoothService = BluetoothPrinterService();
   final ticketBuilder = KitchenTicketBuilder();
+  final billBuilder = CashierBillTicketBuilder();
 
   ErpNextPrintService? erpNextService;
   bool processing = false;
@@ -179,6 +182,62 @@ void printerBackgroundOnStart(ServiceInstance service) async {
     );
   }
 
+  Future<void> printCashierBill(
+    CashierBillJob job,
+    PrinterConfig printer,
+  ) async {
+    if (job.renderMode != 'HTML') {
+      throw StateError('Unsupported cashier bill mode: ${job.renderMode}');
+    }
+    final bytes = await billBuilder.build(
+      htmlContent: job.htmlContent,
+      paperWidth: printer.paperWidth,
+    );
+    if (printer.connectionType == PrinterConnectionType.wifi) {
+      await wifiService.printBytes(
+        ip: printer.ip,
+        port: printer.port,
+        bytes: bytes,
+      );
+    } else {
+      if (printer.bluetoothMac.isEmpty) {
+        throw StateError('Missing Bluetooth MAC for cashier printer.');
+      }
+      await bluetoothService.printBytes(
+        macAddress: printer.bluetoothMac,
+        bytes: bytes,
+      );
+    }
+  }
+
+  Future<void> runCashierCycle(
+    ErpNextPrintService client,
+    List<PrinterConfig> printers,
+  ) async {
+    // Only claim bills when an explicitly saved Cashier printer exists.
+    final cashier = findPrinter(printers, 'Cashier');
+    if (cashier == null) return;
+    final job = await client.claimCashierBill([cashier.name]);
+    if (job == null) return;
+    try {
+      await emitStatus('Printing cashier bill ${job.name}');
+      await printCashierBill(job, cashier);
+    } catch (error) {
+      await client.reportCashierBillResult(
+        jobName: job.name,
+        status: 'Failed',
+        errorMessage: error.toString(),
+      );
+      rethrow;
+    }
+    // Never send a failure report if printing succeeded but ACK failed:
+    // the physical paper may have printed. Server timeout needs manual review.
+    await client.reportCashierBillResult(
+      jobName: job.name,
+      status: 'Printed',
+    );
+  }
+
   Future<void> flushPendingAcks(
     ErpNextPrintService client,
   ) async {
@@ -263,6 +322,13 @@ void printerBackgroundOnStart(ServiceInstance service) async {
           lastError =
               '${job.jobId}: ${error.toString().replaceFirst('Exception: ', '')}';
         }
+      }
+
+      try {
+        await runCashierCycle(client, printers);
+      } catch (error) {
+        failed += 1;
+        lastError = 'Cashier bill: $error';
       }
 
       final remaining = await client.getPendingJobs();
