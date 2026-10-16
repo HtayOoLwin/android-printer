@@ -240,7 +240,9 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
   }
 
   Future<void> _checkPrinterStatuses() async {
-    if (_checkingPrinterStatus || !mounted) return;
+    if (_checkingPrinterStatus || !mounted) {
+      return;
+    }
     _checkingPrinterStatus = true;
     final printers = List<PrinterConfig>.from(_savedPrinters);
     final results = <String, String>{};
