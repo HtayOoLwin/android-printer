@@ -946,7 +946,8 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: _printerNameOptions.contains(_nameController.text.trim())
+              key: ValueKey('printer-${_nameController.text}-${_editingIndex ?? -1}'),
+              initialValue: _printerNameOptions.contains(_nameController.text.trim())
                   ? _nameController.text.trim()
                   : null,
               isExpanded: true,
@@ -1082,7 +1083,8 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
       children: [
         Expanded(
           child: DropdownButtonFormField<String>(
-            value: validSelectedMac,
+            key: ValueKey('bluetooth-${validSelectedMac ?? 'none'}'),
+            initialValue: validSelectedMac,
             decoration: const InputDecoration(
               border: OutlineInputBorder(),
               labelText: 'Paired Printer',
