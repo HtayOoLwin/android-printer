@@ -556,7 +556,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
     _dashboardEditing = false;
     _nameController.clear();
     _ipController.clear();
-    _portController.text = '9100';
+    // Keep the current Port value for the next printer.
     _connectionType = PrinterConnectionType.wifi;
     _paperWidth = 80;
     _selectedBluetoothDevice = null;
