@@ -704,6 +704,9 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
                 final enabled = value ?? false;
                 setState(() => _rememberMe = enabled);
                 if (!enabled) {
+                  if (_autoPrint) {
+                    await _setAutoPrint(false);
+                  }
                   await _serverSettingsStore.save(ServerSettings(
                     baseUrl: _serverUrlController.text.trim(),
                     username: _usernameController.text.trim(),
