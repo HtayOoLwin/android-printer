@@ -1248,8 +1248,8 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
                   ? _nameController.text.trim()
                   : null,
               isExpanded: true,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                border: const OutlineInputBorder(),
                 labelText: 'Printer Name',
                 hintText: _printerNameOptions.isEmpty
                     ? 'All Kitchen Counters are already saved'
