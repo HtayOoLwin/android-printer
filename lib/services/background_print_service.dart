@@ -8,6 +8,7 @@ import '../models/printer_config.dart';
 import 'bluetooth_printer_service.dart';
 import 'erpnext_print_service.dart';
 import 'kitchen_ticket_builder.dart';
+import 'kitchen_counter_sync_store.dart';
 import 'pending_ack_store.dart';
 import 'printer_settings_store.dart';
 import 'server_settings_store.dart';
@@ -63,6 +64,7 @@ void printerBackgroundOnStart(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
 
   final printerSettingsStore = PrinterSettingsStore();
+  final counterSyncStore = KitchenCounterSyncStore();
   final serverSettingsStore = ServerSettingsStore();
   final pendingAckStore = PendingAckStore();
   final wifiService = WifiPrinterService();
@@ -202,6 +204,8 @@ void printerBackgroundOnStart(ServiceInstance service) async {
 
     try {
       final client = await getConnectedService();
+      // Retry queued printer settings independently of print jobs.
+      await counterSyncStore.flush(client);
 
       // Important: ACK first. If a ticket already reached the printer but the
       // previous server acknowledgement failed, retry the ACK instead of
