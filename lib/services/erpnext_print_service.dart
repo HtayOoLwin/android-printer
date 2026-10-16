@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../models/print_job.dart';
+import '../models/cashier_bill_job.dart';
 import 'server_settings_store.dart';
 
 class ErpNextPrintService {
@@ -80,6 +81,40 @@ class ErpNextPrintService {
           ),
         )
         .toList();
+  }
+
+  /// Claims at most one Pending BCN Print Job. This call mutates server state.
+  Future<CashierBillJob?> claimCashierBill(List<String> printerNames) async {
+    if (printerNames.isEmpty) return null;
+    final result = await _requestJson(
+      method: 'POST',
+      path: '/api/method/bcn_print_jobs',
+      form: {'printers': jsonEncode(printerNames)},
+    );
+    final message = result['message'];
+    if (message is! Map || message['job'] == null) return null;
+    return CashierBillJob.fromJson(
+      Map<String, dynamic>.from(message['job'] as Map),
+    );
+  }
+
+  Future<void> reportCashierBillResult({
+    required String jobName,
+    required String status,
+    String errorMessage = '',
+  }) async {
+    if (status != 'Printed' && status != 'Failed') {
+      throw ArgumentError.value(status, 'status', 'Expected Printed or Failed');
+    }
+    await _requestJson(
+      method: 'POST',
+      path: '/api/method/bcn_print_job_result',
+      form: {
+        'job_name': jobName,
+        'status': status,
+        'error_message': errorMessage,
+      },
+    );
   }
 
   Future<List<Map<String, dynamic>>> getKitchenCounters() async {
