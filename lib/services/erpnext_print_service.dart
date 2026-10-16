@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../models/print_job.dart';
+import 'server_settings_store.dart';
 
 class ErpNextPrintService {
   ErpNextPrintService({
@@ -110,6 +111,7 @@ class ErpNextPrintService {
     required String method,
     required String path,
     Map<String, String>? form,
+    bool allowRetry = true,
   }) async {
     if (!isLoggedIn) {
       throw Exception('ERPNext is not logged in.');
@@ -148,6 +150,62 @@ class ErpNextPrintService {
 
       if (response.statusCode == 401 || response.statusCode == 403) {
         _sid = null;
+        // Retry once after re-authentication, never indefinitely.
+        if (allowRetry) {
+          final saved = await ServerSettingsStore().load();
+          if (saved.rememberMe && saved.username.isNotEmpty &&
+              saved.password.isNotEmpty &&
+              saved.baseUrl.replaceAll(RegExp(r'/+
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(
+          'ERPNext API error (${response.statusCode}): ${_extractError(body)}',
+        );
+      }
+
+      if (body.trim().isEmpty) {
+        return <String, dynamic>{};
+      }
+
+      return Map<String, dynamic>.from(jsonDecode(body) as Map);
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  String _extractError(String body) {
+    try {
+      final data = jsonDecode(body);
+      if (data is Map) {
+        final message = data['message'] ??
+            data['exception'] ??
+            data['_server_messages'];
+        if (message != null) {
+          return message.toString();
+        }
+      }
+    } catch (_) {
+      // Fall back to raw text below.
+    }
+
+    final clean = body.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (clean.isEmpty) {
+      return 'Unknown server error';
+    }
+
+    return clean.length > 300 ? clean.substring(0, 300) : clean;
+  }
+}
+), '') == baseUrl) {
+            await login(username: saved.username, password: saved.password);
+            return _requestJson(
+              method: method,
+              path: path,
+              form: form,
+              allowRetry: false,
+            );
+          }
+        }
         throw Exception('ERPNext session expired. Please login again.');
       }
 
