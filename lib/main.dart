@@ -246,9 +246,11 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
     _checkingPrinterStatus = true;
     final printers = List<PrinterConfig>.from(_savedPrinters);
     final results = <String, String>{};
-    if (mounted) setState(() {
-      _printerStates = {for (final p in printers) p.name: 'Checking'};
-    });
+    if (mounted) {
+      setState(() {
+        _printerStates = {for (final p in printers) p.name: 'Checking'};
+      });
+    }
     try {
       // Do not connect/disconnect Bluetooth devices here. The background
       // printing isolate may be using the connection.
@@ -269,7 +271,9 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
               : (btEnabled ? 'Bluetooth - not verified' : 'Bluetooth Off');
         }
       }
-      if (mounted) setState(() => _printerStates = results);
+      if (mounted) {
+        setState(() => _printerStates = results);
+      }
     } finally {
       _checkingPrinterStatus = false;
     }
