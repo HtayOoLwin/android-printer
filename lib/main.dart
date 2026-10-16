@@ -114,6 +114,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
   BluetoothPrinterDevice? _selectedBluetoothDevice;
   List<PrinterConfig> _savedPrinters = const [];
   int? _editingIndex;
+  bool _dashboardEditing = false;
 
   ErpNextPrintService? _erpNextService;
   StreamSubscription<Map<String, dynamic>?>? _backgroundStatusSubscription;
@@ -543,6 +544,17 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
     );
   }
 
+  void _resetPrinterEditor() {
+    _editingIndex = null;
+    _dashboardEditing = false;
+    _nameController.clear();
+    _ipController.clear();
+    _portController.text = '9100';
+    _connectionType = PrinterConnectionType.wifi;
+    _paperWidth = 80;
+    _selectedBluetoothDevice = null;
+  }
+
   Future<void> _savePrinter() async {
     await _runAction(() async {
       final config = _currentConfig();
@@ -569,7 +581,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
       if (!mounted) return;
       setState(() {
         _savedPrinters = updated;
-        _editingIndex = null;
+        _resetPrinterEditor();
       });
       if (_erpNextService?.isLoggedIn == true) {
         await _counterSyncStore.flush(_erpNextService!);
@@ -586,6 +598,8 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
 
     setState(() {
       _editingIndex = index;
+      _dashboardEditing = true;
+      _pageIndex = 0;
       _nameController.text = printer.name;
       _connectionType = printer.connectionType;
       _paperWidth = printer.paperWidth;
@@ -805,8 +819,14 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
               OutlinedButton.icon(
                 onPressed: () {
                   Navigator.pop(sheet);
-                  if (index >= 0) _editPrinter(index);
-                  setState(() => _pageIndex = 1);
+                  if (index >= 0) {
+                    _editPrinter(index);
+                  } else {
+                    setState(() {
+                      _resetPrinterEditor();
+                      _pageIndex = 1;
+                    });
+                  }
                 },
                 icon: const Icon(Icons.tune),
                 label: Text(printer == null ? 'Configure Printer' : 'Edit Printer'),
@@ -888,6 +908,25 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
   }
 
   Widget _buildDashboard() {
+    if (_dashboardEditing) {
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Row(children: [
+            IconButton(
+              onPressed: () => setState(() => _resetPrinterEditor()),
+              icon: const Icon(Icons.arrow_back),
+              tooltip: 'Back to Dashboard',
+            ),
+            const Expanded(
+              child: Text('Edit Printer', style: TextStyle(
+                fontSize: 20, fontWeight: FontWeight.bold)),
+            ),
+          ]),
+          _buildPrinterEditor(),
+        ],
+      );
+    }
     // Dashboard shows locally configured printers only.
     final names = _savedPrinters.map((p) => p.name).toList();
     final printers = {for (final p in _savedPrinters) p.name: p};
@@ -1004,6 +1043,20 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
     );
   }
 
+  Widget _readOnlyPrinterCard(PrinterConfig printer) {
+    final connection = printer.connectionType == PrinterConnectionType.wifi
+        ? 'Wi-Fi · ${printer.ip}:${printer.port}'
+        : 'Bluetooth · ${printer.bluetoothName}';
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.print_outlined),
+        title: Text(printer.name),
+        subtitle: Text('$connection · ${printer.paperWidth}mm'),
+        trailing: const Icon(Icons.lock_outline, size: 18),
+      ),
+    );
+  }
+
   Widget _buildPrinterSettingsPage() {
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -1018,11 +1071,11 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
         ]),
         _buildPrinterEditor(),
         const SizedBox(height: 20),
-        Text('Saved Printers', style: Theme.of(context).textTheme.titleLarge),
+        Text('Saved Printers (Read Only)', style: Theme.of(context).textTheme.titleLarge),
         if (_savedPrinters.isEmpty)
           const Text('No printers saved yet.')
         else
-          ...List.generate(_savedPrinters.length, _buildPrinterCard),
+          ..._savedPrinters.map(_readOnlyPrinterCard),
         Card(child: Padding(
           padding: const EdgeInsets.all(12), child: Text(_status),
         )),
@@ -1072,7 +1125,10 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _pageIndex,
         onDestinationSelected: (index) {
-          setState(() => _pageIndex = index);
+          setState(() {
+            _pageIndex = index;
+            if (index == 1 && _dashboardEditing) _resetPrinterEditor();
+          });
           if (index == 1) _refreshKitchenCounters();
           if (index == 0) _checkPrinterStatuses();
         },
