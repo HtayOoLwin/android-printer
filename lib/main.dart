@@ -8,6 +8,7 @@ import 'services/background_print_service.dart';
 import 'services/bluetooth_printer_service.dart';
 import 'services/erpnext_print_service.dart';
 import 'services/kitchen_ticket_builder.dart';
+import 'services/kitchen_counter_sync_store.dart';
 import 'services/pending_ack_store.dart';
 import 'services/printer_settings_store.dart';
 import 'services/server_settings_store.dart';
@@ -48,6 +49,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
   final _bluetoothService = BluetoothPrinterService();
   final _ticketBuilder = KitchenTicketBuilder();
   final _printerSettingsStore = PrinterSettingsStore();
+  final _counterSyncStore = KitchenCounterSyncStore();
   final _serverSettingsStore = ServerSettingsStore();
   final _pendingAckStore = PendingAckStore();
 
@@ -61,21 +63,49 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
 
-  // Match these labels to the printer_name values returned by ERPNext.
-  static const List<String> _defaultPrinterNames = [
-    'Kitchen',
-    'Bar',
-    'Service',
-  ];
+  List<KitchenCounterPrinter> _kitchenCounters = const [];
 
   List<String> get _printerNameOptions {
-    final names = <String>{
-      ..._defaultPrinterNames,
-      ..._savedPrinters.map((printer) => printer.name),
-    };
-    final editedName = _nameController.text.trim();
-    if (editedName.isNotEmpty) names.add(editedName);
-    return names.toList();
+    // Names always come from ERPNext (or its last successfully fetched cache).
+    return _kitchenCounters.map((c) => c.printerName)
+        .where((name) => name.isNotEmpty).toSet().toList();
+  }
+
+  String? _counterForName(String name) {
+    for (final counter in _kitchenCounters) {
+      if (counter.printerName == name) return counter.counter;
+    }
+    return null;
+  }
+
+  Future<void> _refreshKitchenCounters({bool restore = false}) async {
+    final service = _erpNextService;
+    var counters = await _counterSyncStore.loadCached();
+    if (service != null && service.isLoggedIn) {
+      try {
+        // Retry local changes before reading server backups.
+        await _counterSyncStore.flush(service);
+        final rows = await service.getKitchenCounters();
+        await _counterSyncStore.cache(rows);
+        counters = rows.map(KitchenCounterPrinter.fromJson)
+            .where((c) => c.counter.isNotEmpty && c.printerName.isNotEmpty)
+            .toList();
+      } catch (error) {
+        _setStatus('Kitchen Counters: offline cache in use. $error');
+      }
+    }
+    if (restore && service != null && service.isLoggedIn) {
+      final restored = await _counterSyncStore.restoreIfEmpty(counters);
+      if (mounted) _savedPrinters = restored;
+    }
+    if (!mounted) return;
+    setState(() {
+      _kitchenCounters = counters;
+      if (_printerNameOptions.isNotEmpty &&
+          !_printerNameOptions.contains(_nameController.text.trim())) {
+        _nameController.text = _printerNameOptions.first;
+      }
+    });
   }
 
   PrinterConnectionType _connectionType = PrinterConnectionType.wifi;
@@ -118,6 +148,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
 
   Future<void> _loadInitialSettings() async {
     final printers = await _printerSettingsStore.loadPrinters();
+    final cachedCounters = await _counterSyncStore.loadCached();
     final server = await _serverSettingsStore.load();
     final backgroundRunning = await isPrinterBackgroundRunning();
 
@@ -146,6 +177,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
 
     setState(() {
       _savedPrinters = printers;
+      _kitchenCounters = cachedCounters;
       _serverUrlController.text = server.baseUrl;
       _usernameController.text = server.username;
       _passwordController.text = server.password;
@@ -194,6 +226,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
       });
 
       _setStatus(silent ? 'Auto login successful.' : 'ERPNext login successful.');
+      await _refreshKitchenCounters(restore: true);
       await _refreshPendingCount();
     });
   }
@@ -425,8 +458,8 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
   PrinterConfig _currentConfig() {
     final name = _nameController.text.trim();
 
-    if (name.isEmpty) {
-      throw Exception('Select a printer name.');
+    if (name.isEmpty || _counterForName(name) == null) {
+      throw Exception('Select an ERPNext Kitchen Counter.');
     }
 
     final port = int.tryParse(_portController.text.trim()) ?? 9100;
@@ -465,24 +498,37 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
   Future<void> _savePrinter() async {
     await _runAction(() async {
       final config = _currentConfig();
+      final counter = _counterForName(config.name);
+      if (counter == null) throw Exception('Kitchen Counter not found.');
       final updated = List<PrinterConfig>.from(_savedPrinters);
-
-      if (_editingIndex == null) {
-        updated.add(config);
-      } else {
-        updated[_editingIndex!] = config;
+      final duplicate = updated.indexWhere((p) => p.name == config.name);
+      if (duplicate != -1 && duplicate != _editingIndex) {
+        throw Exception('This Kitchen Counter already has a saved printer.');
       }
-
+      String? previousCounter;
+      if (_editingIndex != null) {
+        previousCounter = _counterForName(updated[_editingIndex!].name);
+        updated[_editingIndex!] = config;
+      } else {
+        updated.add(config);
+      }
+      // Durable local write and sync queue first; network failure never loses setup.
       await _printerSettingsStore.savePrinters(updated);
-
+      if (previousCounter != null && previousCounter != counter) {
+        await _counterSyncStore.enqueue(previousCounter, null);
+      }
+      await _counterSyncStore.enqueue(counter, config);
       if (!mounted) return;
-
       setState(() {
         _savedPrinters = updated;
         _editingIndex = null;
       });
-
-      _setStatus('Printer saved.');
+      if (_erpNextService?.isLoggedIn == true) {
+        await _counterSyncStore.flush(_erpNextService!);
+      }
+      final queued = await _counterSyncStore.pending();
+      _setStatus(queued.isEmpty ? 'Printer saved and synced to ERPNext.'
+          : 'Printer saved locally; ERPNext sync pending.');
     });
   }
 
@@ -507,22 +553,27 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
   }
 
   Future<void> _deletePrinter(int index) async {
+    final name = _savedPrinters[index].name;
+    final counter = _counterForName(name);
+    if (counter == null) {
+      _setStatus('Cannot delete: Kitchen Counter mapping unavailable.');
+      return;
+    }
     final updated = List<PrinterConfig>.from(_savedPrinters)
       ..removeAt(index);
-
     await _printerSettingsStore.savePrinters(updated);
-
+    await _counterSyncStore.enqueue(counter, null);
     if (!mounted) return;
-
     setState(() {
       _savedPrinters = updated;
-
-      if (_editingIndex == index) {
-        _editingIndex = null;
-      }
+      _editingIndex = null;
     });
-
-    _setStatus('Printer deleted.');
+    if (_erpNextService?.isLoggedIn == true) {
+      await _counterSyncStore.flush(_erpNextService!);
+    }
+    final queued = await _counterSyncStore.pending();
+    _setStatus(queued.isEmpty ? 'Printer removed and ERPNext cleared.'
+        : 'Printer removed locally; server deletion queued.');
   }
 
   Future<void> _testCurrentConnection() async {
@@ -724,6 +775,14 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        Row(children: [
+          const Expanded(child: Text('Kitchen Counters from ERPNext')),
+          IconButton(
+            tooltip: 'Refresh Kitchen Counters / sync changes',
+            onPressed: _busy ? null : () => _runAction(() => _refreshKitchenCounters()),
+            icon: const Icon(Icons.refresh),
+          ),
+        ]),
         _buildPrinterEditor(),
         const SizedBox(height: 20),
         Text('Saved Printers', style: Theme.of(context).textTheme.titleLarge),
@@ -781,6 +840,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
         selectedIndex: _pageIndex,
         onDestinationSelected: (index) {
           setState(() => _pageIndex = index);
+          if (index == 1) _refreshKitchenCounters();
         },
         destinations: const [
           NavigationDestination(
