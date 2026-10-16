@@ -82,6 +82,32 @@ class ErpNextPrintService {
         .toList();
   }
 
+  Future<List<Map<String, dynamic>>> getKitchenCounters() async {
+    final response = await _requestJson(
+      method: 'GET',
+      path: '/api/method/bcn_get_kitchen_counter_printers',
+    );
+    final message = response['message'];
+    if (message is! Map || message['success'] != true) {
+      throw Exception('Kitchen Counter API failed: ${message.toString()}');
+    }
+    final rows = message['counters'];
+    if (rows is! List) throw Exception('Invalid Kitchen Counter response.');
+    return rows.map((row) => Map<String, dynamic>.from(row as Map)).toList();
+  }
+
+  Future<void> syncKitchenCounterPrinter(Map<String, String> form) async {
+    final response = await _requestJson(
+      method: 'POST',
+      path: '/api/method/bcn_sync_kitchen_counter_printer',
+      form: form,
+    );
+    final message = response['message'];
+    if (message is! Map || message['success'] != true) {
+      throw Exception('Printer sync failed: ${message.toString()}');
+    }
+  }
+
   Future<void> markPrinted(PrintJob job) {
     return markPrintedValues(
       salesOrder: job.salesOrder,
