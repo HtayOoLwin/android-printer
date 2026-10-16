@@ -73,6 +73,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
 
   bool _busy = false;
   bool _serverLoggedIn = false;
+  bool _rememberMe = true;
   bool _autoPrint = false;
   int _pendingCount = 0;
   String _status = 'Ready';
@@ -130,10 +131,16 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
       _usernameController.text = server.username;
       _passwordController.text = server.password;
       _autoPrint = backgroundRunning;
+      _rememberMe = server.rememberMe;
     });
+
+    if (server.rememberMe && server.username.isNotEmpty &&
+        server.password.isNotEmpty && server.baseUrl.isNotEmpty) {
+      await _loginServer(silent: true);
+    }
   }
 
-  Future<void> _loginServer() async {
+  Future<void> _loginServer({bool silent = false}) async {
     await _runAction(() async {
       final baseUrl = _serverUrlController.text.trim();
       final username = _usernameController.text.trim();
@@ -142,14 +149,6 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
       if (baseUrl.isEmpty || username.isEmpty || password.isEmpty) {
         throw Exception('Server URL, username and password are required.');
       }
-
-      await _serverSettingsStore.save(
-        ServerSettings(
-          baseUrl: baseUrl,
-          username: username,
-          password: password,
-        ),
-      );
 
       final service = ErpNextPrintService(baseUrl: baseUrl);
       _setStatus('Logging in to ERPNext ...');
@@ -161,12 +160,19 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
 
       _erpNextService = service;
 
+      await _serverSettingsStore.save(ServerSettings(
+        baseUrl: baseUrl,
+        username: username,
+        password: password,
+        rememberMe: _rememberMe,
+      ));
+
       if (!mounted) return;
       setState(() {
         _serverLoggedIn = true;
       });
 
-      _setStatus('ERPNext login successful.');
+      _setStatus(silent ? 'Auto login successful.' : 'ERPNext login successful.');
       await _refreshPendingCount();
     });
   }
@@ -688,9 +694,28 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
                 labelText: 'Password',
               ),
             ),
+            const SizedBox(height: 8),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Remember Me'),
+              subtitle: const Text('Automatically log in when reopening the app'),
+              value: _rememberMe,
+              onChanged: _busy ? null : (value) async {
+                final enabled = value ?? false;
+                setState(() => _rememberMe = enabled);
+                if (!enabled) {
+                  await _serverSettingsStore.save(ServerSettings(
+                    baseUrl: _serverUrlController.text.trim(),
+                    username: _usernameController.text.trim(),
+                    password: '',
+                    rememberMe: false,
+                  ));
+                }
+              },
+            ),
             const SizedBox(height: 10),
             FilledButton.icon(
-              onPressed: _busy ? null : _loginServer,
+              onPressed: _busy ? null : () => _loginServer(),
               icon: const Icon(Icons.login),
               label: Text(
                 _serverLoggedIn ? 'Login Again' : 'Login',
