@@ -125,17 +125,24 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
   bool _rememberMe = true;
   bool _autoPrint = false;
   int _pendingCount = 0;
+  Timer? _printerStatusTimer;
+  bool _checkingPrinterStatus = false;
+  Map<String, String> _printerStates = {};
   String _status = 'Ready';
 
   @override
   void initState() {
     super.initState();
     _loadInitialSettings();
+    _printerStatusTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (_serverLoggedIn && _pageIndex == 0) _checkPrinterStatuses();
+    });
   }
 
   @override
   void dispose() {
     _backgroundStatusSubscription?.cancel();
+    _printerStatusTimer?.cancel();
     _nameController.dispose();
     _ipController.dispose();
     _portController.dispose();
@@ -227,8 +234,43 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
 
       _setStatus(silent ? 'Auto login successful.' : 'ERPNext login successful.');
       await _refreshKitchenCounters(restore: true);
+      await _checkPrinterStatuses();
       await _refreshPendingCount();
     });
+  }
+
+  Future<void> _checkPrinterStatuses() async {
+    if (_checkingPrinterStatus || !mounted) return;
+    _checkingPrinterStatus = true;
+    final printers = List<PrinterConfig>.from(_savedPrinters);
+    final results = <String, String>{};
+    if (mounted) setState(() {
+      _printerStates = {for (final p in printers) p.name: 'Checking'};
+    });
+    try {
+      // Do not connect/disconnect Bluetooth devices here. The background
+      // printing isolate may be using the connection.
+      bool btEnabled = false;
+      try { btEnabled = await _bluetoothService.isBluetoothEnabled(); }
+      catch (_) {}
+      for (final printer in printers) {
+        if (printer.connectionType == PrinterConnectionType.wifi) {
+          try {
+            await _wifiService.testConnection(ip: printer.ip, port: printer.port);
+            results[printer.name] = 'Connected';
+          } catch (_) {
+            results[printer.name] = 'Offline';
+          }
+        } else {
+          results[printer.name] = printer.bluetoothMac.isEmpty
+              ? 'Not Configured'
+              : (btEnabled ? 'Bluetooth - not verified' : 'Bluetooth Off');
+        }
+      }
+      if (mounted) setState(() => _printerStates = results);
+    } finally {
+      _checkingPrinterStatus = false;
+    }
   }
 
   Future<void> _refreshPendingCount() async {
@@ -527,6 +569,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
         await _counterSyncStore.flush(_erpNextService!);
       }
       final queued = await _counterSyncStore.pending();
+      await _checkPrinterStatuses();
       _setStatus(queued.isEmpty ? 'Printer saved and synced to ERPNext.'
           : 'Printer saved locally; ERPNext sync pending.');
     });
@@ -572,6 +615,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
       await _counterSyncStore.flush(_erpNextService!);
     }
     final queued = await _counterSyncStore.pending();
+    await _checkPrinterStatuses();
     _setStatus(queued.isEmpty ? 'Printer removed and ERPNext cleared.'
         : 'Printer removed locally; server deletion queued.');
   }
@@ -755,7 +799,11 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        Text('Saved Printers', style: Theme.of(context).textTheme.titleLarge),
+        Row(children: [
+          Expanded(child: Text('Saved Printers', style: Theme.of(context).textTheme.titleLarge)),
+          IconButton(onPressed: _checkingPrinterStatus ? null : _checkPrinterStatuses,
+            tooltip: 'Check printer connections', icon: const Icon(Icons.refresh)),
+        ]),
         if (_savedPrinters.isEmpty)
           const Padding(
             padding: EdgeInsets.all(12),
@@ -841,6 +889,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
         onDestinationSelected: (index) {
           setState(() => _pageIndex = index);
           if (index == 1) _refreshKitchenCounters();
+          if (index == 0) _checkPrinterStatuses();
         },
         destinations: const [
           NavigationDestination(
@@ -1133,6 +1182,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
         ? '${printer.ip}:${printer.port}'
         : '${printer.bluetoothName} • ${printer.bluetoothMac}';
 
+    final connectionStatus = _printerStates[printer.name] ?? 'Checking';
     return Card(
       child: ListTile(
         leading: Icon(
@@ -1141,7 +1191,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
               : Icons.bluetooth,
         ),
         title: Text(printer.name),
-        subtitle: Text('$detail • ${printer.paperWidth}mm'),
+        subtitle: Text('$detail • ${printer.paperWidth}mm • $connectionStatus'),
         trailing: PopupMenuButton<String>(
           onSelected: (value) {
             if (value == 'test') {
