@@ -61,6 +61,23 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
 
+  // Match these labels to the printer_name values returned by ERPNext.
+  static const List<String> _defaultPrinterNames = [
+    'Kitchen',
+    'Bar',
+    'Service',
+  ];
+
+  List<String> get _printerNameOptions {
+    final names = <String>{
+      ..._defaultPrinterNames,
+      ..._savedPrinters.map((printer) => printer.name),
+    };
+    final editedName = _nameController.text.trim();
+    if (editedName.isNotEmpty) names.add(editedName);
+    return names.toList();
+  }
+
   PrinterConnectionType _connectionType = PrinterConnectionType.wifi;
   int _paperWidth = 80;
   List<BluetoothPrinterDevice> _bluetoothDevices = const [];
@@ -409,7 +426,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
     final name = _nameController.text.trim();
 
     if (name.isEmpty) {
-      throw Exception('Enter printer name.');
+      throw Exception('Select a printer name.');
     }
 
     final port = int.tryParse(_portController.text.trim()) ?? 9100;
@@ -868,14 +885,26 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: _nameController,
-              enabled: !_busy,
+            DropdownButtonFormField<String>(
+              value: _printerNameOptions.contains(_nameController.text.trim())
+                  ? _nameController.text.trim()
+                  : null,
+              isExpanded: true,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
                 labelText: 'Printer Name',
-                hintText: 'Kitchen / Bar / Service',
+                hintText: 'Select printer',
               ),
+              items: _printerNameOptions.map((name) =>
+                  DropdownMenuItem<String>(
+                    value: name,
+                    child: Text(name, overflow: TextOverflow.ellipsis),
+                  )).toList(),
+              onChanged: _busy ? null : (name) {
+                if (name != null) {
+                  setState(() => _nameController.text = name);
+                }
+              },
             ),
             const SizedBox(height: 12),
             SegmentedButton<PrinterConnectionType>(
