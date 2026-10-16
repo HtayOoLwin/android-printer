@@ -888,10 +888,8 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
   }
 
   Widget _buildDashboard() {
-    final names = <String>{
-      ..._kitchenCounters.map((c) => c.printerName).where((n) => n.isNotEmpty),
-      ..._savedPrinters.map((p) => p.name),
-    }.toList();
+    // Dashboard shows locally configured printers only.
+    final names = _savedPrinters.map((p) => p.name).toList();
     final printers = {for (final p in _savedPrinters) p.name: p};
     final connected = _savedPrinters.where(
       (p) => _printerStates[p.name] == 'Connected').length;
@@ -910,10 +908,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
     return ColoredBox(
       color: const Color(0xFFF5F7FA),
       child: RefreshIndicator(
-        onRefresh: () async {
-          await _refreshKitchenCounters();
-          await _checkPrinterStatuses();
-        },
+        onRefresh: _checkPrinterStatuses,
         child: ListView(
           padding: const EdgeInsets.all(14),
           children: [
@@ -941,12 +936,9 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold))),
               TextButton.icon(
-                onPressed: _checkingPrinterStatus ? null : () async {
-                  await _refreshKitchenCounters();
-                  await _checkPrinterStatuses();
-                },
-                icon: const Icon(Icons.refresh),
-                label: const Text('Refresh'),
+                onPressed: _checkingPrinterStatus ? null : _checkPrinterStatuses,
+                icon: const Icon(Icons.wifi_tethering),
+                label: const Text('Check Printer Status'),
               ),
             ]),
             if (names.isEmpty)
