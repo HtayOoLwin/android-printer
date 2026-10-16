@@ -6,17 +6,20 @@ class ServerSettings {
     required this.baseUrl,
     required this.username,
     required this.password,
+    this.rememberMe = true,
   });
 
   final String baseUrl;
   final String username;
   final String password;
+  final bool rememberMe;
 }
 
 class ServerSettingsStore {
   static const _baseUrlKey = 'erpnext_base_url';
   static const _usernameKey = 'erpnext_username';
   static const _passwordKey = 'erpnext_password';
+  static const _rememberMeKey = 'erpnext_remember_me';
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
@@ -28,6 +31,7 @@ class ServerSettingsStore {
       baseUrl: prefs.getString(_baseUrlKey) ?? 'https://ourcity.s.frappe.cloud',
       username: prefs.getString(_usernameKey) ?? '',
       password: await _secureStorage.read(key: _passwordKey) ?? '',
+      rememberMe: prefs.getBool(_rememberMeKey) ?? true,
     );
   }
 
@@ -35,9 +39,11 @@ class ServerSettingsStore {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_baseUrlKey, settings.baseUrl.trim());
     await prefs.setString(_usernameKey, settings.username.trim());
-    await _secureStorage.write(
-      key: _passwordKey,
-      value: settings.password,
-    );
+    await prefs.setBool(_rememberMeKey, settings.rememberMe);
+    if (settings.rememberMe) {
+      await _secureStorage.write(key: _passwordKey, value: settings.password);
+    } else {
+      await _secureStorage.delete(key: _passwordKey);
+    }
   }
 }
