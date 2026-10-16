@@ -53,7 +53,7 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
   final _serverSettingsStore = ServerSettingsStore();
   final _pendingAckStore = PendingAckStore();
 
-  final _nameController = TextEditingController(text: 'Kitchen');
+  final _nameController = TextEditingController();
   final _ipController = TextEditingController(text: '192.168.0.90');
   final _portController = TextEditingController(text: '9100');
 
@@ -66,9 +66,16 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
   List<KitchenCounterPrinter> _kitchenCounters = const [];
 
   List<String> get _printerNameOptions {
-    // Names always come from ERPNext (or its last successfully fetched cache).
-    return _kitchenCounters.map((c) => c.printerName)
-        .where((name) => name.isNotEmpty).toSet().toList();
+    // In Add mode, hide counters already configured on this device.
+    // Dashboard Edit mode retains only its existing counter selection.
+    final names = _kitchenCounters.map((c) => c.printerName)
+        .where((name) => name.isNotEmpty).toSet();
+    if (_editingIndex != null) {
+      return names.where((name) =>
+          name == _savedPrinters[_editingIndex!].name).toList();
+    }
+    final savedNames = _savedPrinters.map((p) => p.name).toSet();
+    return names.where((name) => !savedNames.contains(name)).toList();
   }
 
   String? _counterForName(String name) {
@@ -101,9 +108,9 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
     if (!mounted) return;
     setState(() {
       _kitchenCounters = counters;
-      if (_printerNameOptions.isNotEmpty &&
+      if (_editingIndex == null &&
           !_printerNameOptions.contains(_nameController.text.trim())) {
-        _nameController.text = _printerNameOptions.first;
+        _nameController.clear();
       }
     });
   }
@@ -1244,7 +1251,9 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
                 labelText: 'Printer Name',
-                hintText: 'Select printer',
+                hintText: _printerNameOptions.isEmpty
+                    ? 'All Kitchen Counters are already saved'
+                    : 'Select printer',
               ),
               items: _printerNameOptions.map((name) =>
                   DropdownMenuItem<String>(
