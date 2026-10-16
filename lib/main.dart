@@ -1416,49 +1416,5 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
     );
   }
 
-  Widget _buildPrinterCard(int index) {
-    final printer = _savedPrinters[index];
 
-    final detail = printer.connectionType == PrinterConnectionType.wifi
-        ? '${printer.ip}:${printer.port}'
-        : '${printer.bluetoothName} • ${printer.bluetoothMac}';
-
-    final connectionStatus = _printerStates[printer.name] ?? 'Checking';
-    return Card(
-      child: ListTile(
-        leading: Icon(
-          printer.connectionType == PrinterConnectionType.wifi
-              ? Icons.wifi
-              : Icons.bluetooth,
-        ),
-        title: Text(printer.name),
-        subtitle: Text('$detail • ${printer.paperWidth}mm • $connectionStatus'),
-        trailing: PopupMenuButton<String>(
-          onSelected: (value) {
-            if (value == 'test') {
-              _runAction(() => _printTestTicket(printer));
-            } else if (value == 'edit') {
-              _editPrinter(index);
-            } else if (value == 'delete') {
-              _deletePrinter(index);
-            }
-          },
-          itemBuilder: (context) => const [
-            PopupMenuItem(
-              value: 'test',
-              child: Text('Test Print'),
-            ),
-            PopupMenuItem(
-              value: 'edit',
-              child: Text('Edit'),
-            ),
-            PopupMenuItem(
-              value: 'delete',
-              child: Text('Delete'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
