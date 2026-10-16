@@ -48,7 +48,7 @@ class CashierBillTicketBuilder {
       // A single-pixel dashed line at the middle of the row.
       for (var x = 0; x < width; x += 13) {
         for (var dx = 0; dx < 8 && x + dx < width; dx++) {
-          img.setPixel(bitmap, x + dx, 5, img.ColorRgb8(0, 0, 0));
+          bitmap.setPixel(x + dx, 5, img.ColorRgb8(0, 0, 0));
         }
       }
       bytes.addAll(generator.imageRaster(bitmap, align: PosAlign.left));
