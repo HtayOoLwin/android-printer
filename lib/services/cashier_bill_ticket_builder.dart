@@ -186,7 +186,8 @@ class CashierBillTicketBuilder {
       if (paragraph.height > totalHeight) totalHeight = paragraph.height;
     }
 
-    final height = (totalHeight + bottomGap + 8).ceil().clamp(20, 3000);
+    final rawHeight = (totalHeight + bottomGap + 8).ceil();
+    final int height = rawHeight < 20 ? 20 : (rawHeight > 3000 ? 3000 : rawHeight);
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
     canvas.drawColor(const ui.Color(0xFFFFFFFF), ui.BlendMode.src);
