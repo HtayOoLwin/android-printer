@@ -1,3 +1,4 @@
+
 import 'dart:ui' as ui;
 
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
@@ -17,6 +18,16 @@ class KitchenTicketItem {
 }
 
 class KitchenTicketBuilder {
+  // ==========================================================
+  // Font Settings
+  // ==========================================================
+
+  static const double tableFontSize = 22;
+  static const double itemFontSize = 20;
+  static const double noteFontSize = 17;
+
+  static const double lineHeight = 1.15;
+
   Future<List<int>> build({
     required int paperWidth,
     required String tableNumber,
@@ -24,15 +35,22 @@ class KitchenTicketBuilder {
     String orderNote = '',
   }) async {
     final profile = await CapabilityProfile.load();
-    final paperSize = paperWidth == 58 ? PaperSize.mm58 : PaperSize.mm80;
+
+    final paperSize =
+        paperWidth == 58 ? PaperSize.mm58 : PaperSize.mm80;
+
     final generator = Generator(paperSize, profile);
 
     final bytes = <int>[];
 
-    // Slightly tighter ESC/POS line spacing.
+    // Keep line spacing consistent.
     bytes.addAll([0x1B, 0x33, 18]);
 
     bytes.addAll(generator.hr(ch: '-'));
+
+    // ========================================================
+    // Table Number
+    // ========================================================
 
     await _appendText(
       bytes: bytes,
@@ -40,9 +58,14 @@ class KitchenTicketBuilder {
       text: tableNumber,
       paperWidth: paperWidth,
       bold: true,
+      fontSize: tableFontSize,
     );
 
     bytes.addAll(generator.hr(ch: '-'));
+
+    // ========================================================
+    // Item Lines
+    // ========================================================
 
     for (final item in items) {
       await _appendText(
@@ -51,21 +74,30 @@ class KitchenTicketBuilder {
         text: '${_formatQty(item.qty)} x ${item.itemName}',
         paperWidth: paperWidth,
         bold: true,
+        fontSize: itemFontSize,
       );
 
+      // Kitchen Note
       final note = item.kitchenNote.trim();
+
       if (note.isNotEmpty) {
         await _appendText(
           bytes: bytes,
           generator: generator,
           text: '  $note',
           paperWidth: paperWidth,
-          bold: true,
+          bold: false,
+          fontSize: noteFontSize,
         );
       }
     }
 
+    // ========================================================
+    // Order Note
+    // ========================================================
+
     final cleanOrderNote = orderNote.trim();
+
     if (cleanOrderNote.isNotEmpty) {
       bytes.addAll(generator.hr(ch: '-'));
 
@@ -74,19 +106,25 @@ class KitchenTicketBuilder {
         generator: generator,
         text: 'Order Note: $cleanOrderNote',
         paperWidth: paperWidth,
-        bold: true,
+        bold: false,
+        fontSize: noteFontSize,
       );
     }
 
     bytes.addAll(generator.hr(ch: '-'));
     bytes.addAll(generator.feed(1));
 
-    // Restore printer default line spacing before cut.
+    // Restore printer default line spacing.
     bytes.addAll([0x1B, 0x32]);
+
     bytes.addAll(generator.cut());
 
     return bytes;
   }
+
+  // ==========================================================
+  // Render Every Text Line as Image
+  // ==========================================================
 
   Future<void> _appendText({
     required List<int> bytes,
@@ -94,50 +132,34 @@ class KitchenTicketBuilder {
     required String text,
     required int paperWidth,
     required bool bold,
+    required double fontSize,
   }) async {
-    if (_containsNonAscii(text)) {
-      final image = await _renderUnicodeText(
-        text: text,
-        paperWidth: paperWidth,
-        bold: bold,
-      );
-
-      bytes.addAll(
-        generator.imageRaster(
-          image,
-          align: PosAlign.left,
-        ),
-      );
-
-      return;
-    }
+    final image = await _renderTextImage(
+      text: text,
+      paperWidth: paperWidth,
+      bold: bold,
+      fontSize: fontSize,
+    );
 
     bytes.addAll(
-      generator.text(
-        text,
-        styles: PosStyles(
-          bold: bold,
-        ),
+      generator.imageRaster(
+        image,
+        align: PosAlign.left,
       ),
     );
   }
 
-  bool _containsNonAscii(String text) {
-    for (final rune in text.runes) {
-      if (rune > 0x7F) {
-        return true;
-      }
-    }
-    return false;
-  }
+  // ==========================================================
+  // Unicode Raster Text
+  // ==========================================================
 
-  Future<img.Image> _renderUnicodeText({
+  Future<img.Image> _renderTextImage({
     required String text,
     required int paperWidth,
     required bool bold,
+    required double fontSize,
   }) async {
-    // Keep raster width divisible by 8 because esc_pos_utils_plus 2.0.4
-    // throws on non-byte-aligned image widths.
+    // Width must be divisible by 8 for ESC/POS raster.
     final maxWidth = paperWidth == 58 ? 384.0 : 576.0;
 
     final paragraphStyle = ui.ParagraphStyle(
@@ -145,27 +167,37 @@ class KitchenTicketBuilder {
       maxLines: null,
     );
 
-    final paragraphBuilder = ui.ParagraphBuilder(paragraphStyle)
+    final paragraphBuilder = ui.ParagraphBuilder(
+      paragraphStyle,
+    )
       ..pushStyle(
         ui.TextStyle(
           color: const ui.Color(0xFF000000),
-          fontSize: 18,
-          fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+          fontSize: fontSize,
+          fontWeight:
+              bold ? FontWeight.w700 : FontWeight.w400,
+          height: lineHeight,
         ),
       )
       ..addText(text);
 
     final paragraph = paragraphBuilder.build();
+
     paragraph.layout(
-      ui.ParagraphConstraints(width: maxWidth),
+      ui.ParagraphConstraints(
+        width: maxWidth,
+      ),
     );
 
-    final height = paragraph.height.ceil() + 6;
+    // Additional vertical padding prevents Myanmar
+    // upper/lower marks from being clipped.
+    final height = paragraph.height.ceil() + 12;
     final width = maxWidth.ceil();
 
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
 
+    // White background
     canvas.drawRect(
       ui.Rect.fromLTWH(
         0,
@@ -173,22 +205,30 @@ class KitchenTicketBuilder {
         width.toDouble(),
         height.toDouble(),
       ),
-      ui.Paint()..color = const ui.Color(0xFFFFFFFF),
+      ui.Paint()
+        ..color = const ui.Color(0xFFFFFFFF),
     );
 
     canvas.drawParagraph(
       paragraph,
-      const ui.Offset(0, 2),
+      const ui.Offset(0, 5),
     );
 
     final picture = recorder.endRecording();
-    final uiImage = await picture.toImage(width, height);
+
+    final uiImage = await picture.toImage(
+      width,
+      height,
+    );
+
     final byteData = await uiImage.toByteData(
       format: ui.ImageByteFormat.png,
     );
 
     if (byteData == null) {
-      throw Exception('Unable to render Unicode print text.');
+      throw Exception(
+        'Unable to render kitchen ticket text.',
+      );
     }
 
     final decoded = img.decodePng(
@@ -196,16 +236,23 @@ class KitchenTicketBuilder {
     );
 
     if (decoded == null) {
-      throw Exception('Unable to decode Unicode print image.');
+      throw Exception(
+        'Unable to decode kitchen ticket image.',
+      );
     }
 
     return decoded;
   }
 
+  // ==========================================================
+  // Quantity Formatter
+  // ==========================================================
+
   String _formatQty(num qty) {
     if (qty == qty.roundToDouble()) {
       return qty.toInt().toString();
     }
+
     return qty.toString();
   }
 }
