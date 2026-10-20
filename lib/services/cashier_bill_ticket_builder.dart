@@ -6,9 +6,14 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart' as dom;
 import 'package:image/image.dart' as img;
 
-/// Cashier Bill - Professional Thermal Receipt
-/// Supports 58mm and 80mm printers.
-/// All text is rendered as raster images for Unicode consistency.
+/// Render the DMT cashier receipt as full-width raster rows.
+/// Supports Myanmar Unicode rendering.
+///
+/// Print darkness improvements:
+/// 1. Stronger font weight.
+/// 2. Pure black/white image conversion.
+///
+/// Font sizes and receipt layout remain unchanged.
 class CashierBillTicketBuilder {
   Future<List<int>> build({
     required String htmlContent,
@@ -19,45 +24,48 @@ class CashierBillTicketBuilder {
     }
 
     final document = html_parser.parse(htmlContent);
+
     final receipt = document.querySelector('.receipt');
 
     if (receipt == null) {
-      throw StateError('Expected a .receipt element in cashier HTML.');
+      throw StateError(
+        'Expected a .receipt element in cashier HTML.',
+      );
     }
 
     final itemTable = receipt.querySelector('.item-table');
     final summaryTable = receipt.querySelector('.summary-table');
 
     if (itemTable == null || summaryTable == null) {
-      throw StateError('Cashier HTML is missing item or summary table.');
+      throw StateError(
+        'Cashier HTML is missing item or summary table.',
+      );
     }
 
     final profile = await CapabilityProfile.load();
-    final is58mm = paperWidth == 58;
-    final width = is58mm ? 384 : 576;
 
     final generator = Generator(
-      is58mm ? PaperSize.mm58 : PaperSize.mm80,
+      paperWidth == 58
+          ? PaperSize.mm58
+          : PaperSize.mm80,
       profile,
     );
 
-    // Font settings
-    final companyFont = is58mm ? 22.0 : 26.0;
-    final infoFont = is58mm ? 17.0 : 20.0;
-    final headerFont = is58mm ? 18.0 : 22.0;
-    final itemFont = is58mm ? 17.0 : 21.0;
-    final summaryFont = is58mm ? 16.0 : 20.0;
-    final grandTotalFont = is58mm ? 19.0 : 24.0;
+    final width = paperWidth == 58 ? 384 : 576;
 
     final bytes = <int>[];
+
+    // ========================================================
+    // Add a raster text row
+    // ========================================================
 
     Future<void> addRow(
       List<String> cells,
       List<double> ratios, {
       List<ui.TextAlign>? aligns,
       bool bold = false,
-      double fontSize = 20,
-      double bottomGap = 4,
+      double fontSize = 21,
+      double bottomGap = 3,
     }) async {
       final image = await _rasterRow(
         cells: cells,
@@ -77,8 +85,13 @@ class CashierBillTicketBuilder {
       );
     }
 
+    // ========================================================
+    // Dashed horizontal line
+    // ========================================================
+
     Future<void> addRule() async {
       final picture = ui.PictureRecorder();
+
       final canvas = ui.Canvas(picture);
 
       canvas.drawColor(
@@ -88,23 +101,19 @@ class CashierBillTicketBuilder {
 
       final pen = ui.Paint()
         ..color = const ui.Color(0xFF000000)
-        ..strokeWidth = 1.2;
+        ..strokeWidth = 1;
 
       for (var x = 0.0; x < width.toDouble(); x += 14) {
         canvas.drawLine(
           ui.Offset(x, 8),
-          ui.Offset(
-            (x + 8).clamp(0.0, width.toDouble()),
-            8,
-          ),
+          ui.Offset(x + 8, 8),
           pen,
         );
       }
 
-      final bitmap = await picture.endRecording().toImage(
-        width,
-        16,
-      );
+      final bitmap = await picture
+          .endRecording()
+          .toImage(width, 16);
 
       bytes.addAll(
         generator.imageRaster(
@@ -127,8 +136,8 @@ class CashierBillTicketBuilder {
         [1],
         aligns: [ui.TextAlign.center],
         bold: true,
-        fontSize: companyFont,
-        bottomGap: 10,
+        fontSize: 23,
+        bottomGap: 6,
       );
     }
 
@@ -138,10 +147,15 @@ class CashierBillTicketBuilder {
     // Invoice Information
     // ========================================================
 
-    final infoRows = receipt.querySelectorAll('.info-table tr');
+    final infoRows = receipt.querySelectorAll(
+      '.info-table tr',
+    );
 
     for (final row in infoRows) {
-      final cells = row.querySelectorAll('td').map(_text).toList();
+      final cells = row
+          .querySelectorAll('td')
+          .map(_text)
+          .toList();
 
       if (cells.isEmpty) continue;
 
@@ -151,19 +165,20 @@ class CashierBillTicketBuilder {
           [1],
           aligns: [ui.TextAlign.center],
           bold: true,
-          fontSize: infoFont,
-          bottomGap: 5,
+          fontSize: 21,
         );
       } else {
         await addRow(
-          [cells.first, cells.skip(1).join('  ')],
+          [
+            cells.first,
+            cells.skip(1).join('  '),
+          ],
           [0.60, 0.40],
           aligns: [
             ui.TextAlign.left,
             ui.TextAlign.right,
           ],
-          fontSize: infoFont,
-          bottomGap: 5,
+          fontSize: 19,
         );
       }
     }
@@ -183,8 +198,7 @@ class CashierBillTicketBuilder {
         ui.TextAlign.right,
       ],
       bold: true,
-      fontSize: headerFont,
-      bottomGap: 6,
+      fontSize: 21,
     );
 
     await addRule();
@@ -193,7 +207,9 @@ class CashierBillTicketBuilder {
     // Item Details
     // ========================================================
 
-    for (final tr in itemTable.querySelectorAll('tbody tr')) {
+    for (final tr in itemTable.querySelectorAll(
+      'tbody tr',
+    )) {
       final cells = tr.querySelectorAll('td');
 
       if (cells.length < 3) continue;
@@ -210,27 +226,22 @@ class CashierBillTicketBuilder {
           ui.TextAlign.left,
           ui.TextAlign.right,
         ],
-        fontSize: itemFont,
-        bottomGap: 8,
+        fontSize: 20,
+        bottomGap: 7,
       );
     }
 
     await addRule();
 
     // ========================================================
-    // Summary - Subtotal, VAT, Service Charges, Net Total
+    // Summary
+    // Subtotal / VAT / Service Charges / Net Total
     // ========================================================
 
     for (final tr in summaryTable.querySelectorAll('tr')) {
       final cells = tr.querySelectorAll('td');
 
       if (cells.isEmpty) continue;
-
-      final isNetTotal = tr.classes.contains('net-total-row');
-
-      if (isNetTotal) {
-        await addRule();
-      }
 
       if (cells.length >= 3) {
         await addRow(
@@ -239,19 +250,14 @@ class CashierBillTicketBuilder {
             _text(cells[1]),
             _text(cells[2]),
           ],
-          is58mm
-              ? [0.25, 0.47, 0.28]
-              : [0.30, 0.43, 0.27],
+          [0.34, 0.39, 0.27],
           aligns: [
             ui.TextAlign.left,
             ui.TextAlign.right,
             ui.TextAlign.right,
           ],
-          bold: isNetTotal,
-          fontSize: isNetTotal
-              ? grandTotalFont
-              : summaryFont,
-          bottomGap: isNetTotal ? 10 : 5,
+          bold: tr.classes.contains('net-total-row'),
+          fontSize: 19,
         );
       } else if (cells.length == 2) {
         await addRow(
@@ -259,21 +265,21 @@ class CashierBillTicketBuilder {
             _text(cells[0]),
             _text(cells[1]),
           ],
-          [0.70, 0.30],
+          [0.7, 0.3],
           aligns: [
             ui.TextAlign.right,
             ui.TextAlign.right,
           ],
-          bold: isNetTotal,
-          fontSize: isNetTotal
-              ? grandTotalFont
-              : summaryFont,
-          bottomGap: isNetTotal ? 10 : 5,
+          fontSize: 19,
         );
       }
     }
 
     await addRule();
+
+    // ========================================================
+    // Feed and Cut
+    // ========================================================
 
     bytes.addAll(generator.feed(2));
     bytes.addAll(generator.cut());
@@ -282,7 +288,7 @@ class CashierBillTicketBuilder {
   }
 
   // ==========================================================
-  // Extract Clean Text
+  // Clean HTML Text
   // ==========================================================
 
   static String _text(dom.Element? element) {
@@ -294,7 +300,7 @@ class CashierBillTicketBuilder {
   }
 
   // ==========================================================
-  // Render Receipt Row
+  // Raster Text Renderer
   // ==========================================================
 
   Future<img.Image> _rasterRow({
@@ -306,8 +312,7 @@ class CashierBillTicketBuilder {
     required double fontSize,
     required double bottomGap,
   }) async {
-    const horizontalPadding = 5.0;
-    const verticalPadding = 5.0;
+    const horizontalPadding = 4.0;
 
     final usableWidth = width - horizontalPadding * 2;
 
@@ -318,6 +323,7 @@ class CashierBillTicketBuilder {
 
     for (var i = 0; i < cells.length; i++) {
       final columnWidth = usableWidth * ratios[i];
+
       columnWidths.add(columnWidth);
 
       final paragraph = (
@@ -332,10 +338,13 @@ class CashierBillTicketBuilder {
             ui.TextStyle(
               fontSize: fontSize,
               color: const ui.Color(0xFF000000),
+
+              // IMPROVEMENT 1:
+              // Increase font weight without
+              // increasing the font size.
               fontWeight: bold
-                  ? ui.FontWeight.w700
-                  : ui.FontWeight.w400,
-              height: 1.15,
+                  ? ui.FontWeight.w900
+                  : ui.FontWeight.w600,
             ),
           )
           ..addText(cells[i])
@@ -343,8 +352,8 @@ class CashierBillTicketBuilder {
 
       paragraph.layout(
         ui.ParagraphConstraints(
-          width: columnWidth > 8
-              ? columnWidth - 8
+          width: columnWidth > 4
+              ? columnWidth - 4
               : columnWidth,
         ),
       );
@@ -357,12 +366,15 @@ class CashierBillTicketBuilder {
     }
 
     final rawHeight = (
-      totalHeight + bottomGap + verticalPadding * 2
+      totalHeight + bottomGap + 8
     ).ceil();
 
-    final height = rawHeight.clamp(20, 3000).toInt();
+    final int height = rawHeight < 20
+        ? 20
+        : (rawHeight > 3000 ? 3000 : rawHeight);
 
     final recorder = ui.PictureRecorder();
+
     final canvas = ui.Canvas(recorder);
 
     canvas.drawColor(
@@ -375,22 +387,25 @@ class CashierBillTicketBuilder {
     for (var i = 0; i < paragraphs.length; i++) {
       canvas.drawParagraph(
         paragraphs[i],
-        ui.Offset(x, verticalPadding),
+        ui.Offset(x, 4),
       );
 
       x += columnWidths[i];
     }
 
-    return _convert(
-      await recorder.endRecording().toImage(
-        width,
-        height,
-      ),
-    );
+    final bitmap = await recorder
+        .endRecording()
+        .toImage(width, height);
+
+    return _convert(bitmap);
   }
 
   // ==========================================================
-  // Convert Flutter Image to ESC/POS Image
+  // Image Conversion
+  //
+  // IMPROVEMENT 2:
+  // Convert anti-aliased gray pixels to
+  // pure black or pure white.
   // ==========================================================
 
   Future<img.Image> _convert(ui.Image bitmap) async {
@@ -404,16 +419,41 @@ class CashierBillTicketBuilder {
       );
     }
 
-    final result = img.decodePng(
+    final decoded = img.decodePng(
       png.buffer.asUint8List(),
     );
 
-    if (result == null) {
+    if (decoded == null) {
       throw StateError(
         'Unable to decode cashier receipt.',
       );
     }
 
-    return result;
+    // 180 = initial recommended threshold.
+    // Higher values make more gray pixels black.
+    const int blackThreshold = 180;
+
+    for (final pixel in decoded) {
+      final r = pixel.r.toInt();
+      final g = pixel.g.toInt();
+      final b = pixel.b.toInt();
+
+      final gray = (
+        0.299 * r +
+        0.587 * g +
+        0.114 * b
+      ).round();
+
+      final color = gray < blackThreshold
+          ? 0
+          : 255;
+
+      pixel
+        ..r = color
+        ..g = color
+        ..b = color;
+    }
+
+    return decoded;
   }
 }
