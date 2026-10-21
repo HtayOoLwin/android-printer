@@ -11,3 +11,8 @@ android/.gradle/
 android/local.properties
 ios/Pods/
 .DS_Store
+
+# Never commit Android signing secrets
+android/key.properties
+**/*.jks
+**/*.keystore
