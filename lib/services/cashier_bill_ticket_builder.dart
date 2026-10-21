@@ -257,7 +257,7 @@ class CashierBillTicketBuilder {
             ui.TextAlign.right,
           ],
           bold: tr.classes.contains('net-total-row'),
-          fontSize: 19,
+          fontSize: 23,
         );
       } else if (cells.length == 2) {
         await addRow(
@@ -270,7 +270,7 @@ class CashierBillTicketBuilder {
             ui.TextAlign.right,
             ui.TextAlign.right,
           ],
-          fontSize: 19,
+          fontSize: 23,
         );
       }
     }
