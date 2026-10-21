@@ -253,6 +253,14 @@ class CashierBillTicketBuilder {
 
       final isNetTotal = tr.classes.contains('net-total-row');
       final summaryFontSize = isNetTotal ? 27.0 : 24.0;
+      final summaryText = cells.map(_text).join(' ').toLowerCase();
+      final isChargeRow = summaryText.contains('commercial tax') ||
+          summaryText.contains('service charge');
+      // Give tax/service labels more room so the percentage stays
+      // beside the label, not on a second line.
+      final threeColumnRatios = isChargeRow
+          ? <double>[0.08, 0.67, 0.25]
+          : <double>[0.34, 0.39, 0.27];
 
       if (cells.length >= 3) {
         await addRow(
@@ -261,7 +269,7 @@ class CashierBillTicketBuilder {
             _text(cells[1]),
             _text(cells[2]),
           ],
-          [0.34, 0.39, 0.27],
+          threeColumnRatios,
           aligns: [
             ui.TextAlign.left,
             ui.TextAlign.right,
@@ -276,7 +284,7 @@ class CashierBillTicketBuilder {
             _text(cells[0]),
             _text(cells[1]),
           ],
-          [0.7, 0.3],
+          isChargeRow ? [0.78, 0.22] : [0.7, 0.3],
           aligns: [
             ui.TextAlign.right,
             ui.TextAlign.right,
