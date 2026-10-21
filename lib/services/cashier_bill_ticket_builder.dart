@@ -1,4 +1,6 @@
 
+// ignore_for_file: unnecessary_brace_in_string_interps
+
 import 'dart:ui' as ui;
 
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
@@ -13,7 +15,9 @@ import 'package:image/image.dart' as img;
 /// 1. Stronger font weight.
 /// 2. Pure black/white image conversion.
 ///
-/// Font sizes and receipt layout remain unchanged.
+/// Summary font sizes:
+/// Subtotal / Tax / Service Charges = 25
+/// Net Total = 28 (Bold)
 class CashierBillTicketBuilder {
   Future<List<int>> build({
     required String htmlContent,
@@ -235,13 +239,16 @@ class CashierBillTicketBuilder {
 
     // ========================================================
     // Summary
-    // Subtotal / VAT / Service Charges / Net Total
+    // Subtotal / Commercial Tax / Service Charges / Net Total
     // ========================================================
 
     for (final tr in summaryTable.querySelectorAll('tr')) {
       final cells = tr.querySelectorAll('td');
 
       if (cells.isEmpty) continue;
+
+      final isNetTotal = tr.classes.contains('net-total-row');
+      final summaryFontSize = isNetTotal ? 28.0 : 25.0;
 
       if (cells.length >= 3) {
         await addRow(
@@ -256,8 +263,8 @@ class CashierBillTicketBuilder {
             ui.TextAlign.right,
             ui.TextAlign.right,
           ],
-          bold: tr.classes.contains('net-total-row'),
-          fontSize: 23,
+          bold: isNetTotal,
+          fontSize: summaryFontSize,
         );
       } else if (cells.length == 2) {
         await addRow(
@@ -270,7 +277,8 @@ class CashierBillTicketBuilder {
             ui.TextAlign.right,
             ui.TextAlign.right,
           ],
-          fontSize: 23,
+          bold: isNetTotal,
+          fontSize: summaryFontSize,
         );
       }
     }
@@ -339,7 +347,6 @@ class CashierBillTicketBuilder {
               fontSize: fontSize,
               color: const ui.Color(0xFF000000),
 
-              // IMPROVEMENT 1:
               // Increase font weight without
               // increasing the font size.
               fontWeight: bold
@@ -402,10 +409,6 @@ class CashierBillTicketBuilder {
 
   // ==========================================================
   // Image Conversion
-  //
-  // IMPROVEMENT 2:
-  // Convert anti-aliased gray pixels to
-  // pure black or pure white.
   // ==========================================================
 
   Future<img.Image> _convert(ui.Image bitmap) async {
@@ -429,7 +432,6 @@ class CashierBillTicketBuilder {
       );
     }
 
-    // 180 = initial recommended threshold.
     // Higher values make more gray pixels black.
     const int blackThreshold = 180;
 
