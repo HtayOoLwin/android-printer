@@ -178,25 +178,49 @@ class CashierBillTicketBuilder {
       final checkDate = _text(rightCell.querySelector('.check-date'));
 
       if (checkLabel.isNotEmpty || checkDate.isNotEmpty) {
-        // Two physical print lines for each invoice/table row:
-        // Invoice number / Table number       Check In / Check Out
-        //                                     Date and time
-        // This keeps the HTML label/date structure on the ticket.
-        await addRow(
-          [leftText, checkLabel],
-          [0.50, 0.50],
-          aligns: [ui.TextAlign.left, ui.TextAlign.right],
-          bold: true,
-          fontSize: 18,
-          bottomGap: 0,
-        );
-        await addRow(
-          ['', checkDate],
-          [0.50, 0.50],
-          aligns: [ui.TextAlign.left, ui.TextAlign.right],
-          fontSize: 16,
-          bottomGap: 3,
-        );
+        final checkText = [
+          checkLabel,
+          checkDate,
+        ].where((value) => value.isNotEmpty).join(' ');
+
+        // Check whether both sides fit at their intended font size.
+        // Keep a little breathing room between the invoice/table and time.
+        final leftWidth = _measureTextWidth(leftText, 18);
+        final rightWidth = _measureTextWidth(checkText, 16);
+        final availableWidth = width.toDouble() - 16;
+        const columnGap = 12.0;
+
+        if (leftWidth + rightWidth + columnGap <= availableWidth) {
+          // A single line fits: no forced date/time line break.
+          final leftRatio = (leftWidth + columnGap) / availableWidth;
+          await addRow(
+            [leftText, checkText],
+            [leftRatio, 1 - leftRatio],
+            aligns: [ui.TextAlign.left, ui.TextAlign.right],
+            fontSize: 16,
+            bottomGap: 3,
+          );
+        } else {
+          // Not enough room: label stays beside invoice/table,
+          // date and time move to the following line.
+          await addRow(
+            [leftText, checkLabel],
+            [0.50, 0.50],
+            aligns: [ui.TextAlign.left, ui.TextAlign.right],
+            bold: true,
+            fontSize: 18,
+            bottomGap: 0,
+          );
+          if (checkDate.isNotEmpty) {
+            await addRow(
+              ['', checkDate],
+              [0.50, 0.50],
+              aligns: [ui.TextAlign.left, ui.TextAlign.right],
+              fontSize: 16,
+              bottomGap: 3,
+            );
+          }
+        }
       } else {
         // Preserve support for the previous, flat invoice HTML.
         await addRow(
@@ -336,6 +360,22 @@ class CashierBillTicketBuilder {
     return element.text
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
+  }
+
+  // Measure single-line width before choosing the check-in/out layout.
+  static double _measureTextWidth(String value, double fontSize) {
+    if (value.isEmpty) return 0;
+    final paragraph = (ui.ParagraphBuilder(
+      ui.ParagraphStyle(maxLines: 1),
+    )
+          ..pushStyle(ui.TextStyle(
+            fontSize: fontSize,
+            fontWeight: ui.FontWeight.w600,
+          ))
+          ..addText(value))
+        .build();
+    paragraph.layout(const ui.ParagraphConstraints(width: 2000));
+    return paragraph.longestLine;
   }
 
   // ==========================================================
