@@ -158,32 +158,51 @@ class CashierBillTicketBuilder {
     );
 
     for (final row in infoRows) {
-      final cells = row
-          .querySelectorAll('td')
-          .map(_text)
-          .toList();
-
+      final cells = row.querySelectorAll('td');
       if (cells.isEmpty) continue;
 
       if (cells.length == 1) {
         await addRow(
-          cells,
+          [_text(cells.first)],
           [1],
           aligns: [ui.TextAlign.center],
           bold: true,
           fontSize: 21,
         );
-      } else {
+        continue;
+      }
+
+      final leftText = _text(cells.first);
+      final rightCell = cells.last;
+      final checkLabel = _text(rightCell.querySelector('.check-label'));
+      final checkDate = _text(rightCell.querySelector('.check-date'));
+
+      if (checkLabel.isNotEmpty || checkDate.isNotEmpty) {
+        // Two physical print lines for each invoice/table row:
+        // Invoice number / Table number       Check In / Check Out
+        //                                     Date and time
+        // This keeps the HTML label/date structure on the ticket.
         await addRow(
-          [
-            cells.first,
-            cells.skip(1).join('  '),
-          ],
+          [leftText, checkLabel],
+          [0.50, 0.50],
+          aligns: [ui.TextAlign.left, ui.TextAlign.right],
+          bold: true,
+          fontSize: 18,
+          bottomGap: 0,
+        );
+        await addRow(
+          ['', checkDate],
+          [0.50, 0.50],
+          aligns: [ui.TextAlign.left, ui.TextAlign.right],
+          fontSize: 16,
+          bottomGap: 3,
+        );
+      } else {
+        // Preserve support for the previous, flat invoice HTML.
+        await addRow(
+          [leftText, cells.skip(1).map(_text).join('  ')],
           [0.60, 0.40],
-          aligns: [
-            ui.TextAlign.left,
-            ui.TextAlign.right,
-          ],
+          aligns: [ui.TextAlign.left, ui.TextAlign.right],
           fontSize: 19,
         );
       }
