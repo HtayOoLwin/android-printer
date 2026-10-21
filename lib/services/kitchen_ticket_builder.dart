@@ -23,8 +23,8 @@ class KitchenTicketBuilder {
   // ==========================================================
 
   static const double tableFontSize = 22;
-  static const double itemFontSize = 20;
-  static const double noteFontSize = 17;
+  static const double itemFontSize = 22;
+  static const double noteFontSize = 22;
 
   static const double lineHeight = 1.15;
 
