@@ -16,8 +16,8 @@ import 'package:image/image.dart' as img;
 /// 2. Pure black/white image conversion.
 ///
 /// Summary font sizes:
-/// Subtotal / Tax / Service Charges = 25
-/// Net Total = 28 (Bold)
+/// Subtotal / Tax / Service Charges = 24
+/// Net Total = 27 (Bold)
 class CashierBillTicketBuilder {
   Future<List<int>> build({
     required String htmlContent,
@@ -70,6 +70,7 @@ class CashierBillTicketBuilder {
       bool bold = false,
       double fontSize = 21,
       double bottomGap = 3,
+      double minRowHeight = 0,
     }) async {
       final image = await _rasterRow(
         cells: cells,
@@ -79,6 +80,7 @@ class CashierBillTicketBuilder {
         bold: bold,
         fontSize: fontSize,
         bottomGap: bottomGap,
+        minRowHeight: minRowHeight,
       );
 
       bytes.addAll(
@@ -232,6 +234,8 @@ class CashierBillTicketBuilder {
         ],
         fontSize: 20,
         bottomGap: 7,
+        // Uniform single-line spacing; wrapped rows can grow.
+        minRowHeight: 48,
       );
     }
 
@@ -248,7 +252,7 @@ class CashierBillTicketBuilder {
       if (cells.isEmpty) continue;
 
       final isNetTotal = tr.classes.contains('net-total-row');
-      final summaryFontSize = isNetTotal ? 28.0 : 25.0;
+      final summaryFontSize = isNetTotal ? 27.0 : 24.0;
 
       if (cells.length >= 3) {
         await addRow(
@@ -319,6 +323,7 @@ class CashierBillTicketBuilder {
     required bool bold,
     required double fontSize,
     required double bottomGap,
+    required double minRowHeight,
   }) async {
     const horizontalPadding = 4.0;
 
@@ -376,9 +381,15 @@ class CashierBillTicketBuilder {
       totalHeight + bottomGap + 8
     ).ceil();
 
-    final int height = rawHeight < 20
+    // Avoid uneven spacing caused by mixed Myanmar/Latin font metrics.
+    // Keep wrapped text fully visible rather than clipping it.
+    final balancedHeight = rawHeight < minRowHeight
+        ? minRowHeight.ceil()
+        : rawHeight;
+
+    final int height = balancedHeight < 20
         ? 20
-        : (rawHeight > 3000 ? 3000 : rawHeight);
+        : (balancedHeight > 3000 ? 3000 : balancedHeight);
 
     final recorder = ui.PictureRecorder();
 
