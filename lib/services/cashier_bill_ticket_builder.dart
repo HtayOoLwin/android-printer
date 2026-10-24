@@ -165,16 +165,6 @@ class CashierBillTicketBuilder {
       );
     }
 
-    if (companyDescription.isNotEmpty) {
-      await addRow(
-        [companyDescription],
-        [1],
-        aligns: [ui.TextAlign.center],
-        fontSize: 20,
-        bottomGap: 4,
-      );
-    }
-
     await addRule();
 
     // ========================================================
@@ -367,6 +357,17 @@ class CashierBillTicketBuilder {
     }
 
     await addRule();
+
+    // Print company description as the footer, below the final rule.
+    if (companyDescription.isNotEmpty) {
+      await addRow(
+        [companyDescription],
+        [1],
+        aligns: [ui.TextAlign.center],
+        fontSize: 20,
+        bottomGap: 4,
+      );
+    }
 
     // ========================================================
     // Feed and Cut
