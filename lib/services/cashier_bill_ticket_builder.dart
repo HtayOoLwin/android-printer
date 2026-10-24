@@ -17,7 +17,8 @@ import 'package:image/image.dart' as img;
 ///
 /// Summary font sizes:
 /// Subtotal / Tax / Service Charges = 24
-/// Net Total = 27 (Bold)
+/// Net Total / Company Name = 27 (Bold)
+/// Order number / Table / Check In / Check Out / Item = 20
 class CashierBillTicketBuilder {
   Future<List<int>> build({
     required String htmlContent,
@@ -142,7 +143,7 @@ class CashierBillTicketBuilder {
         [1],
         aligns: [ui.TextAlign.center],
         bold: true,
-        fontSize: 23,
+        fontSize: 27,
         bottomGap: 6,
       );
     }
@@ -167,7 +168,7 @@ class CashierBillTicketBuilder {
           [1],
           aligns: [ui.TextAlign.center],
           bold: true,
-          fontSize: 21,
+          fontSize: 20,
         );
         continue;
       }
@@ -185,8 +186,8 @@ class CashierBillTicketBuilder {
 
         // Check whether both sides fit at their intended font size.
         // Keep a little breathing room between the invoice/table and time.
-        final leftWidth = _measureTextWidth(leftText, 18);
-        final rightWidth = _measureTextWidth(checkText, 16);
+        final leftWidth = _measureTextWidth(leftText, 20);
+        final rightWidth = _measureTextWidth(checkText, 20);
         final availableWidth = width.toDouble() - 16;
         const columnGap = 12.0;
 
@@ -197,7 +198,7 @@ class CashierBillTicketBuilder {
             [leftText, checkText],
             [leftRatio, 1 - leftRatio],
             aligns: [ui.TextAlign.left, ui.TextAlign.right],
-            fontSize: 16,
+            fontSize: 20,
             bottomGap: 3,
           );
         } else {
@@ -208,7 +209,7 @@ class CashierBillTicketBuilder {
             [0.50, 0.50],
             aligns: [ui.TextAlign.left, ui.TextAlign.right],
             bold: true,
-            fontSize: 18,
+            fontSize: 20,
             bottomGap: 0,
           );
           if (checkDate.isNotEmpty) {
@@ -216,7 +217,7 @@ class CashierBillTicketBuilder {
               ['', checkDate],
               [0.50, 0.50],
               aligns: [ui.TextAlign.left, ui.TextAlign.right],
-              fontSize: 16,
+              fontSize: 20,
               bottomGap: 3,
             );
           }
@@ -227,7 +228,7 @@ class CashierBillTicketBuilder {
           [leftText, cells.skip(1).map(_text).join('  ')],
           [0.60, 0.40],
           aligns: [ui.TextAlign.left, ui.TextAlign.right],
-          fontSize: 19,
+          fontSize: 20,
         );
       }
     }
