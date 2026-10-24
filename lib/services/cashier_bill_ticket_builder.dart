@@ -148,6 +148,33 @@ class CashierBillTicketBuilder {
       );
     }
 
+    // Company phone and description come from ERPNext receipt HTML.
+    // Render these explicitly because the cashier builder uses raster rows
+    // and does not apply the supplied HTML/CSS automatically.
+    final companyPhone = _text(receipt.querySelector('.company-phone'));
+    final companyDescription =
+        _text(receipt.querySelector('.company-description'));
+
+    if (companyPhone.isNotEmpty) {
+      await addRow(
+        [companyPhone],
+        [1],
+        aligns: [ui.TextAlign.center],
+        fontSize: 20,
+        bottomGap: 2,
+      );
+    }
+
+    if (companyDescription.isNotEmpty) {
+      await addRow(
+        [companyDescription],
+        [1],
+        aligns: [ui.TextAlign.center],
+        fontSize: 20,
+        bottomGap: 4,
+      );
+    }
+
     await addRule();
 
     // ========================================================
