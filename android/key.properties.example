@@ -1,0 +1,4 @@
+storePassword=REPLACE_WITH_LOCAL_SECRET
+keyPassword=REPLACE_WITH_LOCAL_SECRET
+keyAlias=upload
+storeFile=../upload-keystore.jks
