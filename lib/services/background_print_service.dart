@@ -149,6 +149,9 @@ void printerBackgroundOnStart(ServiceInstance service) async {
     final bytes = await ticketBuilder.build(
       paperWidth: printer.paperWidth,
       tableNumber: job.tableNumber,
+      salesOrder: job.salesOrder,
+      waiterName: job.waiterName,
+      orderDateTime: job.orderDateTime,
       items: job.items
           .map(
             (item) => KitchenTicketItem(
