@@ -34,6 +34,8 @@ class PrintJob {
     required this.jobId,
     required this.salesOrder,
     required this.tableNumber,
+    this.waiterName = '',
+    this.orderDateTime = '',
     required this.printerName,
     required this.items,
     required this.orderNote,
@@ -42,6 +44,8 @@ class PrintJob {
   final String jobId;
   final String salesOrder;
   final String tableNumber;
+  final String waiterName;
+  final String orderDateTime;
   final String printerName;
   final List<PrintJobItem> items;
   final String orderNote;
@@ -53,6 +57,9 @@ class PrintJob {
       jobId: (json['job_id'] ?? '').toString(),
       salesOrder: (json['sales_order'] ?? '').toString(),
       tableNumber: (json['table_number'] ?? '').toString(),
+      // New API fields; keep older payloads backward-compatible.
+      waiterName: (json['waiter_name'] ?? json['waiter'] ?? '').toString(),
+      orderDateTime: (json['order_datetime'] ?? json['ordered_at'] ?? '').toString(),
       printerName: (json['printer_name'] ?? '').toString(),
       items: rawItems
           .map(
