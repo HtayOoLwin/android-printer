@@ -402,6 +402,9 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
     final bytes = await _ticketBuilder.build(
       paperWidth: printer.paperWidth,
       tableNumber: job.tableNumber,
+      salesOrder: job.salesOrder,
+      waiterName: job.waiterName,
+      orderDateTime: job.orderDateTime,
       items: job.items
           .map(
             (item) => KitchenTicketItem(
