@@ -32,6 +32,9 @@ class KitchenTicketBuilder {
     required int paperWidth,
     required String tableNumber,
     required List<KitchenTicketItem> items,
+    String salesOrder = '',
+    String waiterName = '',
+    String orderDateTime = '',
     String orderNote = '',
   }) async {
     final profile = await CapabilityProfile.load();
@@ -46,19 +49,24 @@ class KitchenTicketBuilder {
     // Keep line spacing consistent.
     bytes.addAll([0x1B, 0x33, 18]);
 
-    bytes.addAll(generator.hr(ch: '-'));
+    // Two compact rows: Sales Order / Waiter and Table / Order Date-Time.
+    // Keep old payloads printable while the ERPNext API is being updated.
+    if (salesOrder.trim().isNotEmpty || waiterName.trim().isNotEmpty) {
+      await _appendHeaderRow(
+        bytes: bytes,
+        generator: generator,
+        left: salesOrder.trim(),
+        right: waiterName.trim(),
+        paperWidth: paperWidth,
+      );
+    }
 
-    // ========================================================
-    // Table Number
-    // ========================================================
-
-    await _appendText(
+    await _appendHeaderRow(
       bytes: bytes,
       generator: generator,
-      text: tableNumber,
+      left: tableNumber.trim().toUpperCase(),
+      right: _formatOrderDateTime(orderDateTime),
       paperWidth: paperWidth,
-      bold: true,
-      fontSize: tableFontSize,
     );
 
     bytes.addAll(generator.hr(ch: '-'));
@@ -120,6 +128,103 @@ class KitchenTicketBuilder {
     bytes.addAll(generator.cut());
 
     return bytes;
+  }
+
+  // Render both columns in ONE raster row to keep left/right alignment.
+  Future<void> _appendHeaderRow({
+    required List<int> bytes,
+    required Generator generator,
+    required String left,
+    required String right,
+    required int paperWidth,
+  }) async {
+    final width = paperWidth == 58 ? 384 : 576;
+    final columnWidth = (width - 12) / 2;
+    final fontSize = paperWidth == 58 ? 16.0 : 20.0;
+    final leftParagraph = _headerParagraph(
+      left, columnWidth, fontSize, ui.TextAlign.left,
+    );
+    final rightParagraph = _headerParagraph(
+      right, columnWidth, fontSize, ui.TextAlign.right,
+    );
+    final height =
+        (leftParagraph.height > rightParagraph.height
+                ? leftParagraph.height
+                : rightParagraph.height)
+            .ceil() +
+        12;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(recorder);
+    canvas.drawRect(
+      ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      ui.Paint()..color = const ui.Color(0xFFFFFFFF),
+    );
+    canvas.drawParagraph(leftParagraph, const ui.Offset(0, 5));
+    canvas.drawParagraph(
+      rightParagraph,
+      ui.Offset(width - columnWidth, 5),
+    );
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(width, height);
+    final imageData = await image.toByteData(format: ui.ImageByteFormat.png);
+    if (imageData == null) {
+      throw StateError('Unable to render kitchen ticket header.');
+    }
+    final decoded = img.decodePng(imageData.buffer.asUint8List());
+    if (decoded == null) {
+      throw StateError('Unable to decode kitchen ticket header.');
+    }
+    bytes.addAll(generator.imageRaster(decoded, align: PosAlign.left));
+  }
+
+  ui.Paragraph _headerParagraph(
+    String text,
+    double width,
+    double baseSize,
+    ui.TextAlign alignment,
+  ) {
+    ui.Paragraph paragraphFor(double size) {
+      final builder = ui.ParagraphBuilder(
+        ui.ParagraphStyle(
+          textAlign: alignment,
+          maxLines: 1,
+          ellipsis: '…',
+        ),
+      )
+        ..pushStyle(
+          ui.TextStyle(
+            color: const ui.Color(0xFF000000),
+            fontSize: size,
+            fontWeight: FontWeight.w700,
+          ),
+        )
+        ..addText(text);
+      final paragraph = builder.build();
+      paragraph.layout(ui.ParagraphConstraints(width: width));
+      return paragraph;
+    }
+
+    var size = baseSize;
+    var paragraph = paragraphFor(size);
+    while (paragraph.didExceedMaxLines && size > 10) {
+      size -= 1;
+      paragraph = paragraphFor(size);
+    }
+    return paragraph;
+  }
+
+  String _formatOrderDateTime(String value) {
+    final raw = value.trim();
+    if (raw.isEmpty) return '';
+    final parsed = DateTime.tryParse(raw);
+    if (parsed == null) return raw;
+    final date = parsed.isUtc ? parsed.toLocal() : parsed;
+    String two(int number) => number.toString().padLeft(2, '0');
+    final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
+    final period = date.hour >= 12 ? 'PM' : 'AM';
+    return '${two(date.day)}/${two(date.month)}/${date.year} '
+        '${two(hour)}:${two(date.minute)} $period';
   }
 
   // ==========================================================
