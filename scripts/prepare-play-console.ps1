@@ -43,19 +43,31 @@ if ($null -ne $manifestBackup) {
 }
 if (-not (Test-Path $gradlePath)) { throw 'Expected android/app/build.gradle.kts.' }
 $g = [System.IO.File]::ReadAllText($gradlePath)
-$patterns = @(
-    @('(?m)^(\s*applicationId\s*=\s*)"[^"]*"', '"' + $appId + '"'),
-    @('(?m)^(\s*compileSdk\s*=\s*).*$', '36'),
-    @('(?m)^(\s*targetSdk\s*=\s*).*$', '36')
+# Replace whole Gradle assignment lines, including an earlier broken quote.
+# Avoid script-block callbacks and variable expansion in replacement groups.
+if ($g -notmatch '(?m)^\s*applicationId\s*=') {
+    throw 'applicationId assignment not found.'
+}
+if ($g -notmatch '(?m)^\s*compileSdk\s*=') {
+    throw 'compileSdk assignment not found.'
+}
+if ($g -notmatch '(?m)^\s*targetSdk\s*=') {
+    throw 'targetSdk assignment not found.'
+}
+$g = [regex]::Replace(
+    $g, '(?m)^\s*applicationId\s*=.*$',
+    ('        applicationId = "' + $appId + '"')
 )
-foreach ($pair in $patterns) {
-    $pattern = $pair[0]
-    $replacement = $pair[1]
-    if (-not [regex]::IsMatch($g, $pattern)) { throw "Missing Gradle setting: $pattern" }
-    $g = [regex]::Replace($g, $pattern, {
-        param($m)
-        return $m.Groups[1].Value + $replacement
-    })
+$g = [regex]::Replace(
+    $g, '(?m)^\s*compileSdk\s*=.*$',
+    '    compileSdk = 36'
+)
+$g = [regex]::Replace(
+    $g, '(?m)^\s*targetSdk\s*=.*$',
+    '        targetSdk = 36'
+)
+if ($g -notmatch '(?m)^\s*applicationId\s*=\s*"com\.bcncl\.androidprinteroc"\s*$') {
+    throw 'Play applicationId validation failed.'
 }
 if (-not $g.Contains('keystorePropertiesFile')) {
     $header = @'
