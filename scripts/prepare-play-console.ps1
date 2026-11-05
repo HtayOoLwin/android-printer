@@ -1,59 +1,77 @@
-# BCN Printer Worker - prepare Android app for Play Console (Windows PowerShell)
-# Existing key.properties and keystore are reused; never commit them.
+# BCN Printer Worker Play release setup - Windows PowerShell.
+# Uses existing private android/key.properties and keystore.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 $appId = 'com.bcncl.androidprinteroc'
+$keyProps = Join-Path $root 'android/key.properties'
+if (-not (Get-Command flutter -ErrorAction SilentlyContinue)) {
+    throw 'Flutter not found in PATH.'
+}
+if (-not (Test-Path $keyProps)) {
+    throw 'android/key.properties missing. Refusing to generate a debug-signed release.'
+}
+$properties = @{}
+Get-Content $keyProps | ForEach-Object {
+    $entry = $_.Trim()
+    if ($entry -and -not $entry.StartsWith('#') -and $entry.Contains('=')) {
+        $parts = $entry.Split('=', 2)
+        $properties[$parts[0].Trim()] = $parts[1].Trim()
+    }
+}
+foreach ($name in @('storeFile','storePassword','keyAlias','keyPassword')) {
+    if (-not $properties.ContainsKey($name) -or [string]::IsNullOrWhiteSpace($properties[$name])) {
+        throw "Missing signing configuration field: $name"
+    }
+}
+$keystorePath = $properties['storeFile'].Replace('\\', '\')
+if (-not [System.IO.Path]::IsPathRooted($keystorePath)) {
+    $keystorePath = Join-Path (Join-Path $root 'android/app') $keystorePath
+}
+if (-not (Test-Path $keystorePath)) {
+    throw 'The keystore file specified in storeFile does not exist.'
+}
 $manifestPath = Join-Path $root 'android/app/src/main/AndroidManifest.xml'
 $manifestBackup = if (Test-Path $manifestPath) { [System.IO.File]::ReadAllText($manifestPath) } else { $null }
-
-# Validate the existing private upload key BEFORE modifying Gradle.
-$keyPropsPath = Join-Path $root 'android/key.properties'
-if (-not (Test-Path $keyPropsPath)) {
-    throw 'Missing android/key.properties. Copy your existing signing file locally. Do not create a debug-signed release.'
-}
-$keyPairs = @{}
-Get-Content $keyPropsPath | ForEach-Object {
-    if ($_ -match '^\\s*([^#!\\s=]+)\\s*=\\s*(.*)\\s*
-    throw 'Flutter executable not found in PATH.'
-}
 $gradlePath = Join-Path $root 'android/app/build.gradle.kts'
 if (-not (Test-Path $gradlePath)) {
-    Write-Host 'Generating missing Android platform scaffold ...'
     & flutter create --platforms=android --project-name android_printer --org com.bcncl .
-    if ($LASTEXITCODE -ne 0) { throw 'flutter create failed' }
+    if ($LASTEXITCODE -ne 0) { throw 'flutter create failed.' }
 }
 if ($null -ne $manifestBackup) {
     [System.IO.File]::WriteAllText($manifestPath, $manifestBackup, (New-Object System.Text.UTF8Encoding($false)))
 }
-if (-not (Test-Path $gradlePath)) {
-    throw 'Expected android/app/build.gradle.kts. Check Flutter-generated Android scaffold.'
-}
+if (-not (Test-Path $gradlePath)) { throw 'Expected android/app/build.gradle.kts.' }
 $g = [System.IO.File]::ReadAllText($gradlePath)
-# Keep Flutter's generated namespace so its MainActivity package stays resolvable.
-# applicationId is the public package identifier registered with Play Console.
-$g = [regex]::Replace($g, '(?m)^([ \t]*applicationId\s*=\s*)".*?"', ('${1}"' + $appId + '"'))
-$g = [regex]::Replace($g, '(?m)^([ \t]*compileSdk\s*=\s*).*$', '${1}36')
-$g = [regex]::Replace($g, '(?m)^([ \t]*targetSdk\s*=\s*).*$', '${1}36')
-if ($g -notmatch [regex]::Escape('applicationId = "' + $appId + '"')) {
-    throw 'applicationId not found; edit android/app/build.gradle.kts manually.'
+$patterns = @(
+    @('(?m)^(\s*applicationId\s*=\s*)"[^"]*"', '"' + $appId + '"'),
+    @('(?m)^(\s*compileSdk\s*=\s*).*$', '36'),
+    @('(?m)^(\s*targetSdk\s*=\s*).*$', '36')
+)
+foreach ($pair in $patterns) {
+    $pattern = $pair[0]
+    $replacement = $pair[1]
+    if (-not [regex]::IsMatch($g, $pattern)) { throw "Missing Gradle setting: $pattern" }
+    $g = [regex]::Replace($g, $pattern, {
+        param($m)
+        return $m.Groups[1].Value + $replacement
+    })
 }
-if ($g -notmatch 'keystorePropertiesFile') {
+if (-not $g.Contains('keystorePropertiesFile')) {
     $header = @'
 import java.io.FileInputStream
 import java.util.Properties
 
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
-}
+check(keystorePropertiesFile.exists()) { "Missing android/key.properties" }
+keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 
 '@
     $g = $header + $g
 }
-if ($g -notmatch 'create\("release"\)') {
-    $signingConfig = @'
+if (-not ($g.Contains('create("release")') -or $g.Contains('getByName("release") {'))) {
+    $signing = @'
     signingConfigs {
         create("release") {
             keyAlias = keystoreProperties.getProperty("keyAlias")
@@ -62,115 +80,20 @@ if ($g -notmatch 'create\("release"\)') {
             storePassword = keystoreProperties.getProperty("storePassword")
         }
     }
+
 '@
-    if (-not $g.Contains('android {')) { throw 'Android Gradle block missing.' }
-    $g = $g.Replace('android {', "android {`r`n" + $signingConfig)
+    if (-not $g.Contains('android {')) { throw 'Android Gradle block is missing.' }
+    $g = $g.Replace('android {', 'android {' + [char]13 + [char]10 + $signing)
 }
-$debugConfig = 'signingConfig = signingConfigs.getByName("debug")'
-$releaseConfig = 'signingConfig = signingConfigs.getByName("release")'
-if ($g.Contains($debugConfig)) {
-    $g = $g.Replace($debugConfig, $releaseConfig)
+$debugSigning = 'signingConfig = signingConfigs.getByName("debug")'
+$releaseSigning = 'signingConfig = signingConfigs.getByName("release")'
+if ($g.Contains($debugSigning)) {
+    $g = $g.Replace($debugSigning, $releaseSigning)
 }
-if (-not $g.Contains($releaseConfig)) {
-    throw 'Release signing assignment not found; review build.gradle.kts.'
+if (-not $g.Contains($releaseSigning)) {
+    throw 'release signingConfig not found; review build.gradle.kts.'
 }
 [System.IO.File]::WriteAllText($gradlePath, $g, (New-Object System.Text.UTF8Encoding($false)))
-Write-Host 'Release signing uses the existing, verified local key.properties and keystore.'
-Write-Host "Prepared package ID: $appId"
-Write-Host 'Target SDK: 36'
-Write-Host 'Review signing details locally, then run:'
-Write-Host 'flutter pub get'
-Write-Host 'flutter analyze'
-Write-Host 'flutter test'
-Write-Host 'flutter build appbundle --release'
-) {
-        $keyPairs[$Matches[1]] = $Matches[2].Trim()
-    }
-}
-foreach ($requiredKey in @('storeFile', 'storePassword', 'keyAlias', 'keyPassword')) {
-    if (-not $keyPairs.ContainsKey($requiredKey) -or [string]::IsNullOrWhiteSpace($keyPairs[$requiredKey])) {
-        throw "Missing $requiredKey in android/key.properties."
-    }
-}
-$keyFile = $keyPairs['storeFile'].Replace('\\\\', '\\')
-if (-not [System.IO.Path]::IsPathRooted($keyFile)) {
-    $keyFile = Join-Path (Join-Path $root 'android/app') $keyFile
-}
-if (-not (Test-Path $keyFile)) {
-    throw 'Keystore file in android/key.properties does not exist. Verify storeFile privately.'
-}
-
-if (-not (Get-Command flutter -ErrorAction SilentlyContinue)) {
-    throw 'Flutter executable not found in PATH.'
-}
-$gradlePath = Join-Path $root 'android/app/build.gradle.kts'
-if (-not (Test-Path $gradlePath)) {
-    Write-Host 'Generating missing Android platform scaffold ...'
-    & flutter create --platforms=android --project-name android_printer --org com.bcncl .
-    if ($LASTEXITCODE -ne 0) { throw 'flutter create failed' }
-}
-if ($null -ne $manifestBackup) {
-    [System.IO.File]::WriteAllText($manifestPath, $manifestBackup, (New-Object System.Text.UTF8Encoding($false)))
-}
-if (-not (Test-Path $gradlePath)) {
-    throw 'Expected android/app/build.gradle.kts. Check Flutter-generated Android scaffold.'
-}
-$g = [System.IO.File]::ReadAllText($gradlePath)
-# Keep Flutter's generated namespace so its MainActivity package stays resolvable.
-# applicationId is the public package identifier registered with Play Console.
-$g = [regex]::Replace($g, '(?m)^([ \t]*applicationId\s*=\s*)".*?"', ('${1}"' + $appId + '"'))
-$g = [regex]::Replace($g, '(?m)^([ \t]*compileSdk\s*=\s*).*$', '${1}36')
-$g = [regex]::Replace($g, '(?m)^([ \t]*targetSdk\s*=\s*).*$', '${1}36')
-if ($g -notmatch [regex]::Escape('applicationId = "' + $appId + '"')) {
-    throw 'applicationId not found; edit android/app/build.gradle.kts manually.'
-}
-if ($g -notmatch 'keystorePropertiesFile') {
-    $header = @'
-import java.io.FileInputStream
-import java.util.Properties
-
-val keystoreProperties = Properties()
-val keystorePropertiesFile = rootProject.file("key.properties")
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
-}
-
-'@
-    $g = $header + $g
-}
-if ($g -notmatch 'create\("release"\)') {
-    $signingConfig = @'
-    signingConfigs {
-        create("release") {
-            keyAlias = keystoreProperties.getProperty("keyAlias")
-            keyPassword = keystoreProperties.getProperty("keyPassword")
-            storeFile = keystoreProperties.getProperty("storeFile")?.let { file(it) }
-            storePassword = keystoreProperties.getProperty("storePassword")
-        }
-    }
-'@
-    if (-not $g.Contains('android {')) { throw 'Android Gradle block missing.' }
-    $g = $g.Replace('android {', "android {`r`n" + $signingConfig)
-}
-$debugConfig = 'signingConfig = signingConfigs.getByName("debug")'
-$releaseConfig = 'signingConfig = signingConfigs.getByName("release")'
-if ($g.Contains($debugConfig)) {
-    $g = $g.Replace($debugConfig, $releaseConfig)
-}
-if (-not $g.Contains($releaseConfig)) {
-    throw 'Release signing assignment not found; review build.gradle.kts.'
-}
-[System.IO.File]::WriteAllText($gradlePath, $g, (New-Object System.Text.UTF8Encoding($false)))
-$keyProps = Join-Path $root 'android/key.properties'
-if (Test-Path $keyProps) {
-    Write-Host 'Existing android/key.properties found. Reusing existing signing configuration.'
-} else {
-    Write-Warning 'android/key.properties not found in this checkout. Copy existing file locally; DO NOT commit it.'
-}
-Write-Host "Prepared package ID: $appId"
-Write-Host 'Target SDK: 36'
-Write-Host 'Review signing details locally, then run:'
-Write-Host 'flutter pub get'
-Write-Host 'flutter analyze'
-Write-Host 'flutter test'
-Write-Host 'flutter build appbundle --release'
+Write-Host "Release package ID: $appId"
+Write-Host 'Target API: 36; private upload keystore configured.'
+Write-Host 'Run: flutter pub get; flutter analyze; flutter test; flutter build appbundle --release'
