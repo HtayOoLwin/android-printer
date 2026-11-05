@@ -23,10 +23,10 @@ if (-not (Test-Path $gradlePath)) {
     throw 'Expected android/app/build.gradle.kts. Check Flutter-generated Android scaffold.'
 }
 $g = [System.IO.File]::ReadAllText($gradlePath)
-$g = [regex]::Replace($g, '(?m)^([ \t]*namespace\s*=\s*)".*?"', ('1"' + $appId + '"'))
-$g = [regex]::Replace($g, '(?m)^([ \t]*applicationId\s*=\s*)".*?"', ('1"' + $appId + '"'))
-$g = [regex]::Replace($g, '(?m)^([ \t]*compileSdk\s*=\s*).*$', '136')
-$g = [regex]::Replace($g, '(?m)^([ \t]*targetSdk\s*=\s*).*$', '136')
+$g = [regex]::Replace($g, '(?m)^([ \t]*namespace\s*=\s*)".*?"', ('${1}"' + $appId + '"'))
+$g = [regex]::Replace($g, '(?m)^([ \t]*applicationId\s*=\s*)".*?"', ('${1}"' + $appId + '"'))
+$g = [regex]::Replace($g, '(?m)^([ \t]*compileSdk\s*=\s*).*$', '${1}36')
+$g = [regex]::Replace($g, '(?m)^([ \t]*targetSdk\s*=\s*).*$', '${1}36')
 if ($g -notmatch [regex]::Escape('applicationId = "' + $appId + '"')) {
     throw 'applicationId not found; edit android/app/build.gradle.kts manually.'
 }
@@ -55,7 +55,8 @@ if ($g -notmatch 'create\("release"\)') {
         }
     }
 '@
-    $g = [regex]::Replace($g, 'android\s*\{', { param($m) $m.Value + "`r`n" + $signingConfig }, 1)
+    if (-not $g.Contains('android {')) { throw 'Android Gradle block missing.' }
+    $g = $g.Replace('android {', "android {`r`n" + $signingConfig)
 }
 $debugConfig = 'signingConfig = signingConfigs.getByName("debug")'
 $releaseConfig = 'signingConfig = signingConfigs.getByName("release")'
