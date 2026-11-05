@@ -32,6 +32,18 @@ class CashierBillTicketBuilder {
 
     final receipt = document.querySelector('.receipt');
 
+    // The Frappe API stamps a REPRINT banner outside .receipt.
+    // This builder rasterizes selected receipt fields instead of drawing
+    // the original DOM, so preserve the marker explicitly.
+    final isReprint =
+        document.querySelector('.cashier-reprint-banner') != null ||
+        (document.body?.children.any(
+              (element) =>
+                  element.localName == 'div' &&
+                  _text(element).toUpperCase() == 'REPRINT',
+            ) ??
+            false);
+
     if (receipt == null) {
       throw StateError(
         'Expected a .receipt element in cashier HTML.',
@@ -127,6 +139,23 @@ class CashierBillTicketBuilder {
           await _convert(bitmap),
         ),
       );
+    }
+
+    // ========================================================
+    // Reprint label (not present on normal cashier receipts)
+    // ========================================================
+
+    if (isReprint) {
+      await addRule();
+      await addRow(
+        ['REPRINT'],
+        [1],
+        aligns: [ui.TextAlign.center],
+        bold: true,
+        fontSize: 30,
+        bottomGap: 7,
+      );
+      await addRule();
     }
 
     // ========================================================
