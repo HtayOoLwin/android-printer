@@ -23,7 +23,8 @@ if (-not (Test-Path $gradlePath)) {
     throw 'Expected android/app/build.gradle.kts. Check Flutter-generated Android scaffold.'
 }
 $g = [System.IO.File]::ReadAllText($gradlePath)
-$g = [regex]::Replace($g, '(?m)^([ \t]*namespace\s*=\s*)".*?"', ('${1}"' + $appId + '"'))
+# Keep Flutter's generated namespace so its MainActivity package stays resolvable.
+# applicationId is the public package identifier registered with Play Console.
 $g = [regex]::Replace($g, '(?m)^([ \t]*applicationId\s*=\s*)".*?"', ('${1}"' + $appId + '"'))
 $g = [regex]::Replace($g, '(?m)^([ \t]*compileSdk\s*=\s*).*$', '${1}36')
 $g = [regex]::Replace($g, '(?m)^([ \t]*targetSdk\s*=\s*).*$', '${1}36')
