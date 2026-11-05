@@ -18,7 +18,7 @@ flutter pub get
 
 **Important:** `flutter create .` can generate Android files using a default application ID. Before building, edit the generated `android/app/build.gradle.kts` (or `build.gradle`) to match the existing Play Console app. Preserve the existing `android/app/src/main/AndroidManifest.xml` permissions, app label, and the foreground-service declaration. If Flutter has overwritten that manifest, restore and merge it from Git.
 
-Previously proposed package identifier: `com.bcncl.androidprinter`. **This is a proposal, not a verified Play Console package ID.** Do not use it until it matches the app listing.
+Requested Android package ID: `com.bcncl.androidprinteroc`. Confirm it matches the Play Console listing before building an update.
 
 ## 2. Android SDK level and version
 
@@ -28,10 +28,10 @@ Inside `android/app/build.gradle.kts`:
 
 ```kotlin
 android {
-    namespace = "com.bcncl.androidprinter" // only if verified
+    namespace = "com.bcncl.androidprinteroc" // only if verified
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.bcncl.androidprinter" // only if verified
+        applicationId = "com.bcncl.androidprinteroc" // only if verified
         targetSdk = 36
         // Keep or choose a minSdk compatible with your plugins/devices.
     }
@@ -44,7 +44,7 @@ In `pubspec.yaml`, `version: 0.1.0+1` is currently checked in. Choose a **versio
 
 ## 3. Configure the original upload signing key
 
-For an existing app, **reuse the original upload signing key**. For a new app without one, create a private key:
+For an existing app, **reuse the original upload signing key**. If you already have `android/key.properties` and its matching `.jks` keystore, **reuse both**. Do not regenerate signing keys. Only for a brand-new app with no key, create a private key:
 
 ```powershell
 keytool -genkeypair -v -keystore "$env:USERPROFILE\bcn-printer-upload.jks" -alias upload -keyalg RSA -keysize 3072 -validity 10000
