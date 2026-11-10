@@ -5,6 +5,8 @@ class PrintJobItem {
     required this.itemName,
     required this.qty,
     required this.kitchenNote,
+    this.isFoc = false,
+    this.isParcel = false,
   });
 
   final String rowName;
@@ -12,6 +14,12 @@ class PrintJobItem {
   final String itemName;
   final num qty;
   final String kitchenNote;
+  final bool isFoc;
+  final bool isParcel;
+
+  static bool _flag(dynamic value) =>
+      value == true || value == 1 ||
+      (value is String && ['1', 'true', 'yes'].contains(value.trim().toLowerCase()));
 
   factory PrintJobItem.fromJson(Map<String, dynamic> json) {
     return PrintJobItem(
@@ -20,6 +28,8 @@ class PrintJobItem {
       itemName: (json['item_name'] ?? '').toString(),
       qty: (json['qty'] as num?) ?? 0,
       kitchenNote: (json['kitchen_note'] ?? '').toString(),
+      isFoc: _flag(json['custom_foc'] ?? json['foc']),
+      isParcel: _flag(json['custom_parcel'] ?? json['parcel']),
     );
   }
 
