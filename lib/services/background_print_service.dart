@@ -158,6 +158,8 @@ void printerBackgroundOnStart(ServiceInstance service) async {
               itemName: item.itemName,
               qty: item.qty,
               kitchenNote: item.kitchenNote,
+              isFoc: item.isFoc,
+              isParcel: item.isParcel,
             ),
           )
           .toList(),
