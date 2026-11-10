@@ -10,11 +10,15 @@ class KitchenTicketItem {
     required this.itemName,
     required this.qty,
     this.kitchenNote = '',
+    this.isFoc = false,
+    this.isParcel = false,
   });
 
   final String itemName;
   final num qty;
   final String kitchenNote;
+  final bool isFoc;
+  final bool isParcel;
 }
 
 class KitchenTicketBuilder {
@@ -76,10 +80,15 @@ class KitchenTicketBuilder {
     // ========================================================
 
     for (final item in items) {
+      final flags = [
+        if (item.isFoc) 'FOC',
+        if (item.isParcel) 'PC',
+      ];
+      final status = flags.isEmpty ? '' : ' [${flags.join(' / ')}]';
       await _appendText(
         bytes: bytes,
         generator: generator,
-        text: '${_formatQty(item.qty)} x ${item.itemName}',
+        text: '${_formatQty(item.qty)} x ${item.itemName}$status',
         paperWidth: paperWidth,
         bold: true,
         fontSize: itemFontSize,
