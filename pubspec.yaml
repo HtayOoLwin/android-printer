@@ -1,7 +1,7 @@
 name: android_printer
 description: BCN Android Wi-Fi and Bluetooth thermal printer test app.
 publish_to: "none"
-version: 0.1.0+1
+version: 1.0.2+2
 
 environment:
   sdk: ">=3.2.0 <4.0.0"
