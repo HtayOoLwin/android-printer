@@ -71,6 +71,8 @@ class CashierBillTicketBuilder {
     final width = paperWidth == 58 ? 384 : 576;
 
     final bytes = <int>[];
+    // Cashier receipts are rasterized, not rendered by a CSS engine.
+    const itemRatios = <double>[0.28, 0.47, 0.25];
 
     // ========================================================
     // Add a raster text row
@@ -84,6 +86,7 @@ class CashierBillTicketBuilder {
       double fontSize = 21,
       double bottomGap = 3,
       double minRowHeight = 0,
+      bool fitFirstCell = false,
     }) async {
       final image = await _rasterRow(
         cells: cells,
@@ -94,6 +97,7 @@ class CashierBillTicketBuilder {
         fontSize: fontSize,
         bottomGap: bottomGap,
         minRowHeight: minRowHeight,
+        fitFirstCell: fitFirstCell,
       );
 
       bytes.addAll(
@@ -287,7 +291,7 @@ class CashierBillTicketBuilder {
 
     await addRow(
       ['Qty', 'Item', 'Amount'],
-      [0.12, 0.58, 0.30],
+      itemRatios,
       aligns: [
         ui.TextAlign.left,
         ui.TextAlign.left,
@@ -316,7 +320,7 @@ class CashierBillTicketBuilder {
           _text(cells[1]),
           _text(cells[2]),
         ],
-        [0.12, 0.58, 0.30],
+        itemRatios,
         aligns: [
           ui.TextAlign.left,
           ui.TextAlign.left,
@@ -326,6 +330,7 @@ class CashierBillTicketBuilder {
         bottomGap: 7,
         // Uniform single-line spacing; wrapped rows can grow.
         minRowHeight: 48,
+        fitFirstCell: true,
       );
     }
 
@@ -449,6 +454,7 @@ class CashierBillTicketBuilder {
     required double fontSize,
     required double bottomGap,
     required double minRowHeight,
+    required bool fitFirstCell,
   }) async {
     const horizontalPadding = 4.0;
 
@@ -464,6 +470,15 @@ class CashierBillTicketBuilder {
 
       columnWidths.add(columnWidth);
 
+      final textWidth = columnWidth > 4 ? columnWidth - 4 : columnWidth;
+      var cellFontSize = fontSize;
+      if (fitFirstCell && i == 0) {
+        final measuredWidth = _measureTextWidth(cells[i], fontSize);
+        if (measuredWidth > textWidth && measuredWidth > 0) {
+          cellFontSize = fontSize * textWidth / measuredWidth * 0.98;
+        }
+      }
+
       final paragraph = (
         ui.ParagraphBuilder(
           ui.ParagraphStyle(
@@ -474,7 +489,7 @@ class CashierBillTicketBuilder {
         )
           ..pushStyle(
             ui.TextStyle(
-              fontSize: fontSize,
+              fontSize: cellFontSize,
               color: const ui.Color(0xFF000000),
 
               // Increase font weight without
