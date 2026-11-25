@@ -410,7 +410,10 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
             (item) => KitchenTicketItem(
               itemName: item.itemName,
               qty: item.qty,
+              uom: item.uom,
               kitchenNote: item.kitchenNote,
+              isFoc: item.isFoc,
+              isParcel: item.isParcel,
             ),
           )
           .toList(),
@@ -692,16 +695,19 @@ class _PrinterWorkerScreenState extends State<PrinterWorkerScreen> {
         KitchenTicketItem(
           itemName: 'Fried Rice',
           qty: 1,
+          uom: 'Plate',
           kitchenNote: 'No Onion',
         ),
         KitchenTicketItem(
           itemName: 'Chicken Curry',
           qty: 1,
+          uom: 'Plate',
           kitchenNote: 'Extra Chili',
         ),
         KitchenTicketItem(
           itemName: 'Beer',
           qty: 1,
+          uom: 'Glass',
         ),
       ],
       orderNote: 'Birthday Table',

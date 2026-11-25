@@ -5,6 +5,7 @@ class PrintJobItem {
     required this.itemName,
     required this.qty,
     required this.kitchenNote,
+    this.uom = '',
     this.isFoc = false,
     this.isParcel = false,
   });
@@ -13,6 +14,7 @@ class PrintJobItem {
   final String itemCode;
   final String itemName;
   final num qty;
+  final String uom;
   final String kitchenNote;
   final bool isFoc;
   final bool isParcel;
@@ -27,6 +29,7 @@ class PrintJobItem {
       itemCode: (json['item_code'] ?? '').toString(),
       itemName: (json['item_name'] ?? '').toString(),
       qty: (json['qty'] as num?) ?? 0,
+      uom: (json['uom'] ?? '').toString().trim(),
       kitchenNote: (json['kitchen_note'] ?? '').toString(),
       isFoc: _flag(json['custom_foc'] ?? json['foc']),
       isParcel: _flag(json['custom_parcel'] ?? json['parcel']),

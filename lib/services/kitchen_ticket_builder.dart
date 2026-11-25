@@ -10,15 +10,28 @@ class KitchenTicketItem {
     required this.itemName,
     required this.qty,
     this.kitchenNote = '',
+    this.uom = '',
     this.isFoc = false,
     this.isParcel = false,
   });
 
   final String itemName;
   final num qty;
+  final String uom;
   final String kitchenNote;
   final bool isFoc;
   final bool isParcel;
+
+  String get printLine {
+    final qtyText = qty == qty.roundToDouble()
+        ? qty.toInt().toString()
+        : qty.toString();
+    final unit = uom.trim();
+    final quantity = unit.isEmpty ? qtyText : '$qtyText $unit';
+    final flags = [if (isFoc) 'FOC', if (isParcel) 'PC'];
+    final status = flags.isEmpty ? '' : ' [${flags.join(' / ')}]';
+    return '$quantity x $itemName$status';
+  }
 }
 
 class KitchenTicketBuilder {
@@ -80,15 +93,10 @@ class KitchenTicketBuilder {
     // ========================================================
 
     for (final item in items) {
-      final flags = [
-        if (item.isFoc) 'FOC',
-        if (item.isParcel) 'PC',
-      ];
-      final status = flags.isEmpty ? '' : ' [${flags.join(' / ')}]';
       await _appendText(
         bytes: bytes,
         generator: generator,
-        text: '${_formatQty(item.qty)} x ${item.itemName}$status',
+        text: item.printLine,
         paperWidth: paperWidth,
         bold: true,
         fontSize: itemFontSize,
@@ -358,15 +366,4 @@ class KitchenTicketBuilder {
     return decoded;
   }
 
-  // ==========================================================
-  // Quantity Formatter
-  // ==========================================================
-
-  String _formatQty(num qty) {
-    if (qty == qty.roundToDouble()) {
-      return qty.toInt().toString();
-    }
-
-    return qty.toString();
-  }
 }

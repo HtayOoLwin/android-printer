@@ -157,6 +157,7 @@ void printerBackgroundOnStart(ServiceInstance service) async {
             (item) => KitchenTicketItem(
               itemName: item.itemName,
               qty: item.qty,
+              uom: item.uom,
               kitchenNote: item.kitchenNote,
               isFoc: item.isFoc,
               isParcel: item.isParcel,
