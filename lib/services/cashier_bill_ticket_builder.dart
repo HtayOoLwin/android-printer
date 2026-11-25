@@ -72,7 +72,7 @@ class CashierBillTicketBuilder {
 
     final bytes = <int>[];
     // Cashier receipts are rasterized, not rendered by a CSS engine.
-    const itemRatios = <double>[0.22, 0.53, 0.25];
+    const itemRatios = <double>[0.20, 0.55, 0.25];
 
     // ========================================================
     // Add a raster text row
